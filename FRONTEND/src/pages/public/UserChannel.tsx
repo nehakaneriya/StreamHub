@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Navigate, useNavigate } from "react-router-dom";
-import { ArrowLeft, Video as VideoIcon, Eye } from "lucide-react";
+import { ArrowLeft, Video as VideoIcon } from "lucide-react";
 import { getChannel } from "@/service/VideoService";
 import VideoCard from "@/components/Video/VideoCard";
 import { Spinner } from "@/components/ui/spinner";
@@ -35,7 +35,6 @@ export default function UserChannel() {
     return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
   };
 
-  const totalViews = channel?.videos.reduce((sum, v) => sum + (v.viewCount || 0), 0) ?? 0;
 
   if (loading) {
     return (
