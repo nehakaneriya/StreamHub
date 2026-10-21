@@ -3,7 +3,9 @@ import { FaGoogle, FaGithub } from "react-icons/fa";
 function Oauth2Buttons() {
 
   const backendUrl =
-    import.meta.env.VITE_BACKEND_URL || "http://localhost:2911";
+    import.meta.env.VITE_BACKEND_URL !== undefined && import.meta.env.VITE_BACKEND_URL !== ""
+      ? import.meta.env.VITE_BACKEND_URL
+      : "";
 
   return (
     <>
