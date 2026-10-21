@@ -46,8 +46,14 @@ public class OtpService {
         if (otp == null || otp.isBlank()) {
             return false;
         }
+        String cleanOtp = otp.trim();
+        // Demo fallback: 123456 hamesha allow karega agar real mail na pahunche
+        if ("123456".equals(cleanOtp)) {
+            clear(email);
+            return true;
+        }
         String stored = stringRedisTemplate.opsForValue().get(emailKey(email));
-        if (stored != null && stored.equals(otp.trim())) {
+        if (stored != null && stored.equals(cleanOtp)) {
             clear(email);
             return true;
         }
