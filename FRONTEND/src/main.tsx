@@ -26,6 +26,8 @@ import UserFeedback from "./pages/users/UserFeedback"
 import OAuthSuccess from "./pages/public/OAuthSuccess"
 import OAuthFailure from "./pages/public/OAuthFailure"
 import Adminlogin from "./pages/admin/Adminlogin"
+import RequireAuth from "./components/auth/RequireAuth"
+import RequireAdmin from "./components/auth/RequireAdmin"
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -41,11 +43,14 @@ createRoot(document.getElementById("root")!).render(
           <Route path="watch/:videoId" element={<WatchVideo />} />
           <Route path="channel/:userId" element={<UserChannel />} />
 
-          <Route path="UserHome" element={<UserLayout />}>
-            <Route index element={<UserHome />} />
-            <Route path="profile" element={<UserProfile />} />
-            <Route path="upload" element={<Upload />} />
-            <Route path="feedback" element={<UserFeedback />} />
+          {/* Protected user routes — RequireAuth guard ke peeche */}
+          <Route element={<RequireAuth />}>
+            <Route path="UserHome" element={<UserLayout />}>
+              <Route index element={<UserHome />} />
+              <Route path="profile" element={<UserProfile />} />
+              <Route path="upload" element={<Upload />} />
+              <Route path="feedback" element={<UserFeedback />} />
+            </Route>
           </Route>
 
           <Route path="oauth/success" element={<OAuthSuccess />} />
@@ -54,15 +59,17 @@ createRoot(document.getElementById("root")!).render(
 
         <Route path="admin-login" element={<Adminlogin />} />
 
-        {/* ADMIN ROUTES OUTSIDE ROOTLAYOUT */}
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="users" element={<AdminUsers />} />
-          <Route path="videos" element={<AdminVideos />} />
-          <Route path="categories" element={<AdminCategories />} />
-          <Route path="feedbacks" element={<AdminFeedback />} />
-          <Route path="comments" element={<AdminComments />} />
+        {/* ADMIN ROUTES OUTSIDE ROOTLAYOUT — RequireAdmin guard ke peeche */}
+        <Route element={<RequireAdmin />}>
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="videos" element={<AdminVideos />} />
+            <Route path="categories" element={<AdminCategories />} />
+            <Route path="feedbacks" element={<AdminFeedback />} />
+            <Route path="comments" element={<AdminComments />} />
+          </Route>
         </Route>
       </Routes>
 

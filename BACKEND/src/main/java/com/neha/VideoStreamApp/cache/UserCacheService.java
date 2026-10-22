@@ -62,25 +62,33 @@ public class UserCacheService {
                 return (User) obj;
             }
 
+            // Redis me plain JSON store hota hai (polymorphic typing nahi — security
+            // ke liye). Value wapas aati hai Map form me, isliye explicitly apne
+            // target type me convert karte hain.
+            UserCacheDto dto;
+            if (obj instanceof UserCacheDto already) {
+                dto = already;
+            } else {
+                dto = objectMapper.convertValue(obj, UserCacheDto.class);
+            }
+
+            if (dto == null) {
+                return null;
+            }
+
             // Cache me UserCacheDto store hota hai — roles String me rehta hai.
             // Direct convertValue(User.class) se roles Set<String> → Set<Role> conversion fail hota
             // tha aur har request DB pe chali jati thi. Ab khud se sahi User banao.
-            if (obj instanceof UserCacheDto dto) {
-                return User.builder()
-                        .id(dto.getId())
-                        .email(dto.getEmail())
-                        .name(dto.getName())
-                        .enable(dto.isEnable())
-                        .roles(dto.getRoles() == null ? new HashSet<>() :
-                                dto.getRoles().stream()
-                                        .map(name -> Role.builder().name(name).build())
-                                        .collect(Collectors.toSet()))
-                        .build();
-            }
-
-            // Fallback: Agar koi purana format deserialize ho jaye (Map-based)
-            log.warn("[USER-CACHE] Unknown cached type, trying ObjectMapper convertValue. key={} type={}", key, obj.getClass().getName());
-            return objectMapper.convertValue(obj, User.class);
+            return User.builder()
+                    .id(dto.getId())
+                    .email(dto.getEmail())
+                    .name(dto.getName())
+                    .enable(dto.isEnable())
+                    .roles(dto.getRoles() == null ? new HashSet<>() :
+                            dto.getRoles().stream()
+                                    .map(name -> Role.builder().name(name).build())
+                                    .collect(Collectors.toSet()))
+                    .build();
         } catch (Exception e) {
             // Redis deserialization fail hone par app crash hone ke bajaye DB hit handle ho jayega
             log.error("[USER-CACHE][ERR-UC-002] Redis read/deserialize failed, falling back to DB. key={} Reason: {}", key, e.getMessage(), e);

@@ -1,6 +1,8 @@
 package com.neha.VideoStreamApp.repositories;
 
 import com.neha.VideoStreamApp.entities.Comment;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -15,6 +17,9 @@ public interface CommentRepository extends JpaRepository<Comment, String> {
 
     // ADMIN — poore platform ke saare comments (flat list, replies bhi isme aa jayenge), naye sabse pehle
     List<Comment> findAllByOrderByCreatedAtDesc();
+
+    // ADMIN — paginated version (unbounded findAll memory exhaustion kar sakta tha)
+    Page<Comment> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
     // Ek video ke total comments count (admin table ke liye)
     long countByVideo_VideoId(String videoId);

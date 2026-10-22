@@ -8,6 +8,7 @@ import com.neha.VideoStreamApp.repositories.FeedbackRepository;
 import com.neha.VideoStreamApp.repositories.UserRepository;
 import com.neha.VideoStreamApp.services.FeedbackService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,6 +17,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class FeedbackServiceImpl implements FeedbackService {
+
+    // Admin listing ke liye max rows
+    private static final int MAX_ADMIN_LIST_SIZE = 1000;
 
     private final FeedbackRepository feedbackRepository;
     private final UserRepository userRepository;
@@ -44,7 +48,10 @@ public class FeedbackServiceImpl implements FeedbackService {
 
     @Override
     public List<FeedbackDto> getAllFeedbacks() {
-        return feedbackRepository.findAllByOrderByCreatedAtDesc()
+        // Bounded — unbounded findAll() memory exhaustion ka risk
+        return feedbackRepository
+                .findAllByOrderByCreatedAtDesc(PageRequest.of(0, MAX_ADMIN_LIST_SIZE))
+                .getContent()
                 .stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());

@@ -45,12 +45,12 @@ const useAuthStore = create<AuthState>()(
     },
 
     login: async (loginData) => {
-        console.log("started login in store with data:");
         set({authLoading: true})
 
        try {
         const loginResponseData = await loginUser(loginData);
-        console.log("Login response in store:", loginResponseData);
+        // SECURITY: access token ko console me log mat karo (devtools me
+        // token leak ho jata tha — screen share / log extensions se exposed)
         set({
             accessToken: loginResponseData.accessToken,
             user: loginResponseData.user,
@@ -59,8 +59,9 @@ const useAuthStore = create<AuthState>()(
         return loginResponseData;
        }
         catch (error) {
-
-            console.log("Login error in store:", error);
+            // Error log karo, par token/headers nahi — AxiosError me
+            // config.headers.Authorization hota hai
+            console.error("Login failed:", error instanceof Error ? error.message : "Unknown error");
             throw error;
         }
         finally {
@@ -68,17 +69,23 @@ const useAuthStore = create<AuthState>()(
         }
     },
     logout:async()=> {
-        // Pehle state clear karo — navigate immediately hoga
-        set({
-            accessToken: null,
-            user: null,
-            authStatus: false,
-            authLoading: false,
-        });
-        // Server ko best-effort notify karo (cookie clear hogi)
-        logoutUser().catch(() => {
-            // silently ignore — state toh already clear ho gayi
-        });
+        // Pehle server ko notify karo — backend access token ko blacklist karta hai.
+        // Ye ORDER important hai: agar pehle local state clear kar dete hain to
+        // request interceptor ke paas token nahi hota, header attach nahi hota,
+        // aur backend logout ke baad bhi access token valid reh jata tha.
+        try {
+            await logoutUser();
+        } catch (error) {
+            console.error("Logout request failed:", error instanceof Error ? error.message : "Unknown error");
+        } finally {
+            // State clear karo — navigate immediately hoga
+            set({
+                accessToken: null,
+                user: null,
+                authStatus: false,
+                authLoading: false,
+            });
+        }
     },
 
     

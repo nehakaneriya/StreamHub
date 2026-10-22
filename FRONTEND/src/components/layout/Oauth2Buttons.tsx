@@ -1,11 +1,7 @@
 import { FaGoogle, FaGithub } from "react-icons/fa";
+import { oauth2Url } from "@/config/env";
 
 function Oauth2Buttons() {
-
-  const backendUrl =
-    import.meta.env.VITE_BACKEND_URL !== undefined && import.meta.env.VITE_BACKEND_URL !== ""
-      ? import.meta.env.VITE_BACKEND_URL
-      : "";
 
   return (
     <>
@@ -24,7 +20,7 @@ function Oauth2Buttons() {
       {/* OAuth Buttons */}
       <div className="flex gap-4">
         <a
-          href={`${backendUrl}/oauth2/authorization/google`}
+          href={oauth2Url("google")}
           className="flex-1 flex items-center cursor-pointer justify-center bg-white/5 border border-white/10 py-3 rounded-2xl hover:bg-white/10 transition"
         >
           <FaGoogle size={20} />
@@ -32,7 +28,7 @@ function Oauth2Buttons() {
 
         {/* Github */}
         <a
-          href={`${backendUrl}/oauth2/authorization/github`}
+          href={oauth2Url("github")}
           className="flex-1 flex items-center cursor-pointer justify-center bg-white/5 border border-white/10 py-3 rounded-2xl hover:bg-white/10 transition"
         >
           <FaGithub size={20} />

@@ -19,12 +19,12 @@ export default function Adminlogin() {
       await adminLogin(email, password);
       navigate("/admin/dashboard");
     } catch (err) {
-      console.error("Admin login error:", err);
-      setError(
-        err instanceof Error && err.message === "You are not an admin"
-          ? "You are not an admin"
-          : "Invalid admin credentials"
-      );
+      // Token/headers nahi log karte — AxiosError me config.headers.Authorization hota hai
+      console.error("Admin login failed:", err instanceof Error ? err.message : "Unknown error");
+      // NOTE: Backend ab "not an admin" aur "wrong password" ke liye SAME message
+      // deta hai (user enumeration avoid karne ke liye) — isliye yahan bhi
+      // ek hi generic message dikhana sahi hai.
+      setError("Invalid admin credentials");
     }
   };
 

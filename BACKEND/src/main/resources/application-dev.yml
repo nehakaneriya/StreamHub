@@ -55,7 +55,12 @@ spring:
 
     # ── JWT ─────────────────────────────────────────────────
     jwt:
-      secret: ${JWT_SECRET:ahenoknddjnjncjjcnvbhuhfuerueyrwueiiwokjcvnbcvncbvcbnbgdgewryruwqiudhjjjn}
+      # SECRET ENV SE AANA CHAHIYE. Agar set nahi hai to dev profile ek
+      # EPHEMERAL (random, per-startup) secret generate karega — isse tokens
+      # restart ke baad invalid ho jayenge, lekin hardcoded secret kabhi repo
+      # me nahi jayega. Prod/QA mein ye allowed NAHI hai.
+      secret: ${JWT_SECRET:}
+      allow-ephemeral-secret: true
       issuer: ${JWT_ISSUER:videostream.com}
       access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:300}
       refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:86400}
@@ -70,6 +75,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
       timeout: 5000ms
       client-type: JEDIS
       jedis:
@@ -116,13 +122,40 @@ app:
   otp:
     ttl-seconds: ${OTP_TTL_SECONDS:300}            # OTP 5 min valid
     resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:60}  # resend 60 sec gap
+    # "123456" wala universal fallback REMOVED — ab har OTP hamesha random hai.
+    # Dev me test karne ke liye real (random) OTP console me log hota hai — niche dekho.
+    # DEV ONLY: real OTP console me log karo — SMTP fail hone par bhi flow test
+    # kar sako. Prod/QA me hamesha false.
+    log-otp: ${OTP_LOG_ENABLED:true}
   auth:
     frontend:
       success-redirect: ${FRONT_END_SUCCESS_REDIRECT:http://localhost:1304/oauth/success}
       failure-redirect: ${FRONT_END_FAILURE_REDIRECT:http://localhost:1304/oauth/failure}
   admin:
     email: ${ADMIN_EMAIL:admin@gmail.com}
-    password: ${ADMIN_PASSWORD:admin123}
+    # Password env se aaye. Blank hai to ek random strong password generate hoga
+    # aur startup log me print hoga (set ADMIN_PASSWORD to fix it).
+    password: ${ADMIN_PASSWORD:}
+    seed-enabled: ${ADMIN_SEED_ENABLED:true}
+  security:
+    blacklist:
+      # Dev me fail-OPEN — local Redis band ho to app pura down na ho.
+      # (Prod/QA me true hai.)
+      fail-closed: false
+  dev-tools:
+    # DEV ONLY — /api/v1/dev/mail-test se SMTP test karne ke liye.
+    # QA/Prod me false hai (wahan ye controller load hi nahi hota).
+    enabled: ${DEV_TOOLS_ENABLED:true}
+  ratelimit:
+    login:
+      max-attempts: ${RATE_LIMIT_LOGIN_MAX:5}
+      window-minutes: ${RATE_LIMIT_LOGIN_WINDOW:15}
+    otp:
+      max-attempts: ${RATE_LIMIT_OTP_MAX:5}
+      window-minutes: ${RATE_LIMIT_OTP_WINDOW:15}
+    resend:
+      max-attempts: ${RATE_LIMIT_RESEND_MAX:3}
+      window-minutes: ${RATE_LIMIT_RESEND_WINDOW:60}
 
 # ── Logging ───────────────────────────────────────────────────
 logging:

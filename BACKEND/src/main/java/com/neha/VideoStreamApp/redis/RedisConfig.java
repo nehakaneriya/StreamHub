@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.EnableCaching;
@@ -56,10 +55,21 @@ public class RedisConfig {
         redisMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         redisMapper.registerModules(SecurityJackson2Modules.getModules(getClass().getClassLoader()));
         redisMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
-        redisMapper.activateDefaultTyping(
-                LaissezFaireSubTypeValidator.instance,
-                ObjectMapper.DefaultTyping.NON_FINAL
-        );
+
+        // SECURITY: Yahan KOI polymorphic default typing NAHI use ho rahi.
+        //
+        // Pehle `activateDefaultTyping(LaissezFaireSubTypeValidator, NON_FINAL)`
+        // tha — jo classic deserialization-gadget RCE hai (attacker Redis me
+        // likh sake to arbitrary class instantiate ho jati thi).
+        // BasicPolymorphicTypeValidator se replace karne par bhi JDK collection
+        // types (ArrayList/HashSet) reject ho jate the aur caching silently
+        // fail ho jati thi.
+        //
+        // Ab plain JSON store hota hai (koi type-id nahi) — deserialization
+        // ke liye polymorphic resolution ki zaroorat hi nahi. Jo bhi value
+        // padhna chahta hai wo explicitly apne target type me convert karta
+        // hai (ObjectMapper.convertValue) — koi arbitrary class load nahi hoti.
+        redisMapper.deactivateDefaultTyping();
 
         GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(redisMapper);
 

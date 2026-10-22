@@ -23,7 +23,6 @@
     "react-toastify": "^11.0.5",
     "tailwind-merge": "^3.5.0",
     "video.js": "^8.23.7",
-    "videojs-contrib-quality-levels": "^4.1.0",
     "zustand": "^5.0.11"
   },
   "devDependencies": {

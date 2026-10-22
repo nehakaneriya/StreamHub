@@ -19,4 +19,13 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     // Naya method: Har user ka email aur unke total videos ka count nikalne ke liye
     @Query("SELECT u.email, COUNT(v) FROM User u LEFT JOIN u.videos v GROUP BY u.email")
     List<Object[]> countVideosPerUser();
+
+    // Counts — poori table load karne ke bajaye DB side count (admin dashboard)
+    long countByEnableTrue();
+
+    long countByRoles_Name(String roleName);
+
+    // Email lookup case-insensitive — login ke liye
+    @Query("SELECT u FROM User u WHERE LOWER(u.email) = LOWER(:email)")
+    Optional<User> findByEmailIgnoreCase(@Param("email") String email);
 }

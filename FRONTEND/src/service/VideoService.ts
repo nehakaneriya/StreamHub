@@ -1,8 +1,15 @@
 import apiClient from "../config/ApiClient";
-import type { Video } from "../models/Video"; 
+import { hlsMasterUrl, thumbnailUrl } from "../config/env";
+import type { Video } from "../models/Video";
 import type { ScrollResponse } from "../models/ScrollResponse";
 
-export const uploadVideo = async (file: File, title: string, description: string, category?: string) => {
+export const uploadVideo = async (
+    file: File,
+    title: string,
+    description: string,
+    category?: string,
+    onProgress?: (percent: number) => void
+) => {
     // 1. File upload ke liye FormData zaroori hai
     const formData = new FormData();
     formData.append("file", file);
@@ -16,7 +23,14 @@ export const uploadVideo = async (file: File, title: string, description: string
     const response = await apiClient.post("/videos", formData, {
         headers: {
             "Content-Type": "multipart/form-data"
-        }
+        },
+        // Upload + FFmpeg processing lamba le sakta hai (10 min cap)
+        timeout: 10 * 60 * 1000,
+        onUploadProgress: (progressEvent) => {
+            if (onProgress) {
+                onProgress(Math.round((progressEvent.loaded * 100) / (progressEvent.total || 1)));
+            }
+        },
     });
     return response.data;
 };
@@ -63,9 +77,12 @@ export const updateVideo = async (
 };
 
 // HLS Master URL generate karne ka helper
-export const getHlsMasterUrl = (videoId: string) => {
-    return `${apiClient.defaults.baseURL}/videos/${videoId}/master.m3u8`;
-};
+export const getHlsMasterUrl = (videoId: string) => hlsMasterUrl(videoId);
+
+// Thumbnail URL — feed ke cards isse use karte hain.
+// Pehle har card apna <video> element se HLS master playlist load karta tha
+// (ek page par 12+ playlist + segment requests).
+export const getThumbnailUrl = (videoId: string) => thumbnailUrl(videoId);
 
 // Unique view record karta hai — same user + same video lifetime ek baar
 export const incrementView = async (videoId: string): Promise<number> => {

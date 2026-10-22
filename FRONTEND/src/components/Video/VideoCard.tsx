@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Play, Trash2, Calendar, Eye, Pencil } from "lucide-react";
-import { getHlsMasterUrl } from "@/service/VideoService";
+import { getThumbnailUrl } from "@/service/VideoService";
 
 interface Props {
   videoId: string;
@@ -52,13 +52,17 @@ export default function VideoCard({
       onClick={() => navigate(`/watch/${videoId}`)}
     >
 
-      {/* Thumbnail — actual video ka first frame */}
+      {/* Thumbnail — server-generated first frame */}
       <div className="relative aspect-video bg-black overflow-hidden">
-        <video
-          src={getHlsMasterUrl(videoId)}
+        <img
+          src={getThumbnailUrl(videoId)}
+          alt={title}
           className="w-full h-full object-cover"
-          muted
-          preload="metadata"
+          loading="lazy"
+          onError={(e) => {
+            // Thumbnail na ho to blank black box dikhe (HLS load karne ki zaroorat nahi)
+            e.currentTarget.style.visibility = "hidden";
+          }}
         />
 
         {/* Play overlay */}

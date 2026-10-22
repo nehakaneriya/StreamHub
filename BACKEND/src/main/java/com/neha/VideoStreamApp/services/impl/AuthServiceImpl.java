@@ -30,21 +30,40 @@ public class AuthServiceImpl implements AuthService {
         UserDto created = userService.createPendingUser(userDto);
 
         // OTP generate karo, Redis me store karo, email par bhejo
+        // NOTE: Mail fail hone par exception propagate hota hai (pehle silently
+        // log hota tha) — taaki user ko pata chale email nahi gaya.
         String otp = otpService.generateAndStore(created.getEmail());
-        mailService.sendOtpEmail(created.getEmail(), created.getName(), otp);
+        try {
+            mailService.sendOtpEmail(created.getEmail(), created.getName(), otp);
+        } catch (Exception e) {
+            // OTP Redis me pada reh jayega — use hata do warna stale OTP rahega
+            otpService.clear(created.getEmail());
+            throw e;
+        }
 
         return created;
     }
 
     @Override
-    public void cancelRegistration(String email) {
+    public void cancelRegistration(String email, String otp) {
         if (email == null || email.isBlank()) {
             throw new BadRequestException("Email is required");
         }
+        if (otp == null || otp.isBlank()) {
+            throw new BadRequestException("OTP is required");
+        }
 
         String cleanEmail = email.trim();
-        userRepository.findByEmail(cleanEmail)
-                .or(() -> userRepository.findByEmail(cleanEmail.toLowerCase()))
+
+        // SECURITY: Pehle koi bhi unauthenticated caller kisi bhi email ka
+        // pending account delete kar sakta tha (DoS + enumeration).
+        // Ab OTP verify karna zaroori hai — OTP usi email par bheja gaya tha,
+        // to ownership proof hai.
+        if (!otpService.verify(cleanEmail, otp)) {
+            throw new BadRequestException("Invalid or expired OTP. Please try again.");
+        }
+
+        userRepository.findByEmailIgnoreCase(cleanEmail)
                 .ifPresent(user -> {
                     if (user.isEnable()) {
                         throw new BadRequestException("Cannot cancel registration for an already verified user");
@@ -54,7 +73,5 @@ public class AuthServiceImpl implements AuthService {
                         userCacheService.evictUserCache(user.getId().toString());
                     }
                 });
-
-        otpService.clear(cleanEmail);
     }
 }

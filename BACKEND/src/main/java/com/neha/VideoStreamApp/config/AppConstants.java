@@ -28,24 +28,13 @@ public class AppConstants {
             "/swagger-ui.html",
             "/swagger-ui/**",
 
-            // Public video list + single video metadata (GET only)
-            // NOTE: POST /api/v1/videos (upload) is PROTECTED — SecurityConfig mein handle hoga
-            "/api/v1/videos",
-            "/api/v1/videos/*",
-
-            // Public channel page — kisi bhi user ke videos (bina login)
-            "/api/v1/videos/user/*",
-
             // Public categories list (filter chips + upload dropdown ke liye)
             "/api/v1/categories",
 
-            // HLS streaming — public (video player ke liye token nahi chahiye)
-            "/api/v1/videos/*/master.m3u8",
-            "/api/v1/videos/*/*/playlist.m3u8",
-            "/api/v1/videos/*/*/*.ts",
-
-            // Legacy direct stream (public — HLS se replace ho chuka hai)
-            "/api/v1/videos/stream/**",
+            // NOTE: Public VIDEO endpoints (feed, single video, HLS, stream) jaan-boojh kar
+            // YAHAN nahi rakhe. Ye method-specific hain (sirf GET) aur SecurityConfig me
+            // alag se define kiye gaye hain — taaki POST/PUT/DELETE video rules
+            // shadow na ho (Spring Security first-match-wins hai).
     };
 
     // ─── COMMENTS: GET public hai, POST/DELETE SecurityConfig mein method-wise protected ───

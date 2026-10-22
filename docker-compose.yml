@@ -33,10 +33,14 @@ services:
     image: redis:7.0
     container_name: videostream-redis
     restart: unless-stopped
+    # Password set karo — passwordless Redis koi bhi access kar sakta hai
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-videostream_redis_pass}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-videostream_redis_pass}
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "ping", "-a", "${REDIS_PASSWORD:-videostream_redis_pass}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -64,8 +68,11 @@ services:
       # Redis
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-videostream_redis_pass}
 
       # JWT
+      # NOTE: Default secret prod me use KABHI mat karna — apna 64+ char
+      # random secret .env me set karo. (JWT_SECRET env se hi aayega)
       JWT_SECRET: ${JWT_SECRET:-changeme_generate_a_64_char_random_secret_key_for_production_use_123456}
       JWT_ISSUER: ${JWT_ISSUER:-videostream.com}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-300}
@@ -75,11 +82,17 @@ services:
       JWT_COOKIE_SECURE: ${JWT_COOKIE_SECURE:-false}
       JWT_COOKIE_HTTP_ONLY: ${JWT_COOKIE_HTTP_ONLY:-true}
       JWT_COOKIE_SAME_SITE: ${JWT_COOKIE_SAME_SITE:-lax}
-      JWT_COOKIE_DOMAIN: ${JWT_COOKIE_DOMAIN:-localhost}
+      # NOTE: `${VAR-}` (colon ke bina) — `${VAR:-default}` me KHALI value bhi
+      # default le leta tha. IP-based deploy me domain khali chhodna zaroori hai
+      # (browser "Domain=1.2.3.4" wale cookies reject karta hai) — isliye
+      # default localhost nahi, khaali rakhna hai.
+      JWT_COOKIE_DOMAIN: ${JWT_COOKIE_DOMAIN-}
 
       # Admin Default
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@gmail.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      # Blank chhodne par app ek random strong password generate karke log karega
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_SEED_ENABLED: ${ADMIN_SEED_ENABLED:-true}
 
       # Frontend URLs
       FRONT_END_URL: ${FRONT_END_URL:-http://localhost}
@@ -107,6 +120,13 @@ services:
       - backend-hls:/app/videos_hls
     ports:
       - "2911:2911"
+    healthcheck:
+      # App alive hai ya nahi — depends_on ke liye zaroori hai
+      test: ["CMD", "curl", "-fsS", "http://localhost:2911/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     networks:
       - videostream-net
 
@@ -121,7 +141,8 @@ services:
     container_name: videostream-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "80:80"
       - "1304:80"

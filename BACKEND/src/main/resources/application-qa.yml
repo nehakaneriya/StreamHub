@@ -48,7 +48,9 @@ spring:
 
     # ── JWT ─────────────────────────────────────────────────
     jwt:
-      secret: ${JWT_SECRET:ahenoknddjnjncjjcnvbhuhfuerueyrwueiiwokjcvnbcvncbvcbnbgdgewryruwqiudhjjjn}
+      # QA mein bhi secret env se hi aayega — koi hardcoded fallback nahi.
+      secret: ${JWT_SECRET:}
+      allow-ephemeral-secret: false
       issuer: ${JWT_ISSUER:qa.videostream.com}
       access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:600}    # QA mein thoda zyada time
       refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:86400}
@@ -76,6 +78,15 @@ spring:
           timeout: 5000
           writetimeout: 5000
 
+  # ── Redis (cache + JWT blacklist + OTP) ────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000ms
+      client-type: JEDIS
+
 # ── Swagger — QA mein ON (testing ke liye) ────────────────────
 springdoc:
   api-docs:
@@ -95,13 +106,30 @@ app:
   otp:
     ttl-seconds: ${OTP_TTL_SECONDS:300}
     resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:60}
+    log-otp: false                       # QA me OTP log nahi hoga
   auth:
     frontend:
       success-redirect: ${FRONT_END_SUCCESS_REDIRECT:http://localhost:1304/oauth/success}
       failure-redirect: ${FRONT_END_FAILURE_REDIRECT:http://localhost:1304/oauth/failure}
   admin:
     email: ${ADMIN_EMAIL:qa-admin@videostream.com}
-    password: ${ADMIN_PASSWORD:QaAdmin@123}
+    password: ${ADMIN_PASSWORD:}          # Blank hoga to random password log hoga
+    seed-enabled: ${ADMIN_SEED_ENABLED:true}
+  security:
+    blacklist:
+      fail-closed: true                   # QA me revoked token Redis outage me bhi reject
+  dev-tools:
+    enabled: false                       # QA me dev tools band
+  ratelimit:
+    login:
+      max-attempts: ${RATE_LIMIT_LOGIN_MAX:5}
+      window-minutes: ${RATE_LIMIT_LOGIN_WINDOW:15}
+    otp:
+      max-attempts: ${RATE_LIMIT_OTP_MAX:5}
+      window-minutes: ${RATE_LIMIT_OTP_WINDOW:15}
+    resend:
+      max-attempts: ${RATE_LIMIT_RESEND_MAX:3}
+      window-minutes: ${RATE_LIMIT_RESEND_WINDOW:60}
 
 # ── Logging — QA mein detailed ────────────────────────────────
 logging:

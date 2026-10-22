@@ -174,7 +174,8 @@ export default function CommentSection({ videoId }: CommentSectionProps) {
 
   // Ek comment row render karta hai — top-level aur reply dono ke liye reuse hota hai
   const renderComment = (comment: Comment, isReply: boolean) => {
-    const isOwner = currentUser?.email === comment.userEmail;
+    // Ownership check userId se — public comment response me email expose nahi hota
+    const isOwner = !!currentUser?.id && currentUser.id === comment.userId;
     const isHidden = !!comment.hidden;
 
     return (

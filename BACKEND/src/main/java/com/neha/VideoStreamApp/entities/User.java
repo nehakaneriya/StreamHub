@@ -34,9 +34,11 @@ public class User extends BaseEntity implements UserDetails {
     @JsonIgnore
     private String password;
 
+    @Builder.Default
     private boolean enable = true;
 
     @Enumerated(EnumType.STRING)
+    @Builder.Default
     private Provider provider = Provider.LOCAL;
 
     private String providerId;
@@ -47,10 +49,12 @@ public class User extends BaseEntity implements UserDetails {
             joinColumns = @JoinColumn(name = "user_id"),
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
+    @Builder.Default
     private Set<Role> roles = new HashSet<>();
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore // <--- Redis Caching ke liye Videos list ko ignore karna zaroori hai (Loop / Heavy payload avoid karne ke liye)
+    @Builder.Default
     private List<Video> videos = new ArrayList<>();
 
     @Override

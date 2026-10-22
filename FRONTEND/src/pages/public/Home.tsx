@@ -12,7 +12,8 @@ export default function Home() {
   const search = searchParams.get("search") || "";
 
   const [videos, setVideos] = useState<Video[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Initially true — warna first load se pehle "No videos found." flash hota tha
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const [scrollId, setScrollId] = useState<string | undefined>();
@@ -24,25 +25,32 @@ export default function Home() {
 
 
   // Synchronous State Tracking Refs (Fixes Stale Closure Issues)
+  // NOTE: Refs ko render phase me mutate nahi karte — React concurrent rendering
+  // me render side-effects unsafe hote hain. Effect me sync karte hain.
   const loadingRef = useRef(loading);
-  loadingRef.current = loading;
-
   const hasNextRef = useRef(hasNext);
-  hasNextRef.current = hasNext;
-
   const scrollIdRef = useRef(scrollId);
-  scrollIdRef.current = scrollId;
-
   const activeCategoryRef = useRef(activeCategory);
-  activeCategoryRef.current = activeCategory;
+  const loadMoreRef = useRef<() => void>(() => {});
+
+  useEffect(() => { loadingRef.current = loading; }, [loading]);
+  useEffect(() => { hasNextRef.current = hasNext; }, [hasNext]);
+  useEffect(() => { scrollIdRef.current = scrollId; }, [scrollId]);
+  useEffect(() => { activeCategoryRef.current = activeCategory; }, [activeCategory]);
 
   const observer = useRef<IntersectionObserver | null>(null);
+  const lastVideoElement = useRef<HTMLDivElement | null>(null);
 
   // Categories load karo (filter chips ke liye)
   useEffect(() => {
     getAllCategories()
       .then(setCategories)
-      .catch(() => setCategories([]));
+      .catch(() => {
+        // Error swallow karke chip list khaali kar dete the — user ko pata
+        // nahi chalta ki categories load nahi hui
+        console.error("Failed to load categories");
+        setCategories([]);
+      });
   }, []);
 
   // First Page
@@ -97,6 +105,9 @@ export default function Home() {
     }
   }, [search]);
 
+  // loadMore ka latest reference rakhna — observer stale closure na pakde
+  useEffect(() => { loadMoreRef.current = loadMore; }, [loadMore]);
+
   // Category click — reset aur first page fetch karo
   const handleCategoryClick = useCallback((slug: string) => {
     setActiveCategory(slug);
@@ -108,28 +119,43 @@ export default function Home() {
     setScrollId(undefined);
     setHasNext(true);
     fetchFirstPage();
-
-    return () => {
-      if (observer.current) observer.current.disconnect();
-    };
-
   }, [search, activeCategory, fetchFirstPage]);
 
- // Observer Ref Callback
-  const lastVideoRef = useCallback((node: HTMLDivElement | null) => {
-    if (loadingRef.current) return;
+  /**
+   * IntersectionObserver setup.
+   *
+   * BUG FIX: Pehle observer `lastVideoRef` callback ref ke andar banaya tha,
+   * jo sirf tab call hota tha jab last video element mount/unmount hota tha.
+   * Category change par cleanup observer ko disconnect kar deta tha, lekin
+   * observerdobara recreate nahi hota tha (kyunki last element identity badli
+   * nahi) — infinite scroll permanently dead ho jati thi.
+   *
+   * Ab observer ek effect me banta hai jo videos.length par depend karta hai,
+   * aur cleanup properly disconnect karta hai.
+   */
+  useEffect(() => {
+    const node = lastVideoElement.current;
+    if (!node) return;
 
-    if (observer.current) observer.current.disconnect();
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextRef.current && !loadingRef.current) {
+          loadMoreRef.current();
+        }
+      },
+      { rootMargin: "200px" }
+    );
 
-    observer.current = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && hasNextRef.current && !loadingRef.current) {
-        loadMore();
+    obs.observe(node);
+    observer.current = obs;
+
+    return () => {
+      obs.disconnect();
+      if (observer.current === obs) {
+        observer.current = null;
       }
-    });
-
-    if (node) observer.current.observe(node);
-  }, [loadMore]);
-
+    };
+  }, [videos.length, hasNext]);
 
   return (
     <div className="p-3 sm:p-6 bg-[#0f0f0f] min-h-screen text-white">
@@ -188,7 +214,7 @@ export default function Home() {
           return (
             <div
               key={video.videoId}
-              ref={isLastElement ? lastVideoRef : undefined}
+              ref={isLastElement ? lastVideoElement : undefined}
             >
               <VideoCard
                 videoId={video.videoId}

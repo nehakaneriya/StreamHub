@@ -46,81 +46,82 @@ export default function VideoPlayer({ src, onWatchTime }: VideoPlayerProps) {
   const lastTimeRef = useRef(0);
   const watchedRef = useRef(0);
 
+  // onWatchTime ka latest ref — timeupdate handler stale closure na pakde
+  const onWatchTimeRef = useRef(onWatchTime);
+  useEffect(() => { onWatchTimeRef.current = onWatchTime; }, [onWatchTime]);
+
   const [qualityOptions, setQualityOptions] = useState<number[]>([]);
   const [currentQuality, setCurrentQuality] = useState<"auto" | number>("auto");
   const [menuOpen, setMenuOpen] = useState(false);
 
+  /**
+   * Player ek hi baar create hota hai aur dispose hota hai component unmount par.
+   *
+   * BUG FIX: Pehle creation aur source-change dono ek hi effect me the. Effect
+   * ka cleanup player ko dispose karta tha, jisse "src change" wala `else`
+   * branch KABHI reachable nahi hota tha — har video change par naya player
+   * banta tha (DOM growth + player state loss).
+   */
   useEffect(() => {
-    if (!playerRef.current) {
-      const videoElement = document.createElement("video-js");
-      videoElement.classList.add("vjs-big-play-centered");
-      videoRef.current?.appendChild(videoElement);
+    const videoElement = document.createElement("video-js");
+    videoElement.classList.add("vjs-big-play-centered");
+    videoRef.current?.appendChild(videoElement);
 
-      const player = videojs(videoElement, {
-        autoplay: false,
-        controls: true,
-        responsive: true,
-        fluid: true,
-        aspectRatio: "16:9",
-        sources: [{ src, type: "application/x-mpegURL" }],
-        playbackRates: [0.5, 1, 1.25, 1.5, 2],
-        controlBar: {
-          downloadButton: false,
-          skipButtons: {
-            forward: 10,
-            backward: 10,
-          },
+    const player = videojs(videoElement, {
+      autoplay: false,
+      controls: true,
+      responsive: true,
+      fluid: true,
+      aspectRatio: "16:9",
+      sources: [{ src, type: "application/x-mpegURL" }],
+      playbackRates: [0.5, 1, 1.25, 1.5, 2],
+      controlBar: {
+        downloadButton: false,
+        skipButtons: {
+          forward: 10,
+          backward: 10,
         },
-        userActions: {
-          hotkeys: true,
-        },
-      });
+      },
+      userActions: {
+        hotkeys: true,
+      },
+    });
 
-      playerRef.current = player;
+    playerRef.current = player;
 
-      player.ready(() => {
-        // video.js 8 + VHS built-in "qualityLevels" method use karta hai
-        const qualityLevels = (player as PlayerWithQualityLevels).qualityLevels?.();
-        if (!qualityLevels) return;
-        qualityLevelsRef.current = qualityLevels;
+    player.ready(() => {
+      // video.js 8 + VHS built-in "qualityLevels" method use karta hai
+      const qualityLevels = (player as PlayerWithQualityLevels).qualityLevels?.();
+      if (!qualityLevels) return;
+      qualityLevelsRef.current = qualityLevels;
 
-        // Har baar jab HLS master.m3u8 se koi naya resolution-variant detect ho,
-        // ye event fire hota hai — hum dropdown ke options refresh kar dete hain
-        qualityLevels.on("addqualitylevel", () => {
-          const heights = new Set<number>();
-          for (let i = 0; i < qualityLevels.length; i++) {
-            const level = qualityLevels[i];
-            if (level.height) heights.add(level.height);
-          }
-          setQualityOptions(Array.from(heights).sort((a, b) => b - a));
-        });
-      });
-
-      videoElement.addEventListener("contextmenu", (e) => e.preventDefault());
-
-      // Cumulative watch-time tracking — timeupdate har ~250ms fire hota hai
-      player.on("timeupdate", () => {
-        const currentTime = player.currentTime() || 0;
-        const delta = currentTime - lastTimeRef.current;
-
-        // Forward playback hi count karo — seek backward/forward jump nahi
-        // (badi jumps ko bhi ignore karo taaki seek ko "watch" na maana jaye)
-        if (delta > 0 && delta < 10) {
-          watchedRef.current += delta;
-          onWatchTime?.(watchedRef.current);
+      // Har baar jab HLS master.m3u8 se koi naya resolution-variant detect ho,
+      // ye event fire hota hai — hum dropdown ke options refresh kar dete hain
+      qualityLevels.on("addqualitylevel", () => {
+        const heights = new Set<number>();
+        for (let i = 0; i < qualityLevels.length; i++) {
+          const level = qualityLevels[i];
+          if (level.height) heights.add(level.height);
         }
-        lastTimeRef.current = currentTime;
+        setQualityOptions(Array.from(heights).sort((a, b) => b - a));
       });
+    });
 
-    } else {
-      playerRef.current.src({ src, type: "application/x-mpegURL" });
-      // setState ko effect ke synchronous flow se bahar (microtask mein) daala
-      // taaki React ke "no setState directly in effect body" rule ke saath clash na ho
-      queueMicrotask(() => {
-        setQualityOptions([]);
-        setCurrentQuality("auto");
-      });
-    }
+    videoElement.addEventListener("contextmenu", (e) => e.preventDefault());
+
+    // Cumulative watch-time tracking — timeupdate har ~250ms fire hota hai
+    player.on("timeupdate", () => {
+      const currentTime = player.currentTime() || 0;
+      const delta = currentTime - lastTimeRef.current;
+
+      // Forward playback hi count karo — seek backward/forward jump nahi
+      // (badi jumps ko bhi ignore karo taaki seek ko "watch" na maana jaye)
+      if (delta > 0 && delta < 10) {
+        watchedRef.current += delta;
+        onWatchTimeRef.current?.(watchedRef.current);
+      }
+      lastTimeRef.current = currentTime;
+    });
 
     return () => {
       if (playerRef.current && !playerRef.current.isDisposed()) {
@@ -128,7 +129,34 @@ export default function VideoPlayer({ src, onWatchTime }: VideoPlayerProps) {
         playerRef.current = null;
       }
     };
-  }, [src, onWatchTime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Source change handle karo.
+   *
+   * BUG FIX: Watch-time counters pehle video change par reset nahi hote the —
+   * doosre video par cumulative watch time carry over hota tha, jisse 30s ka
+   * "real view" threshold turant cross ho jata tha (inflated view counts).
+   */
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    // Naya video → counters reset
+    lastTimeRef.current = 0;
+    watchedRef.current = 0;
+
+    player.src({ src, type: "application/x-mpegURL" });
+    qualityLevelsRef.current = null;
+
+    // setState ko effect ke synchronous flow se bahar (microtask mein) daala
+    // taaki React ke "no setState directly in effect body" rule ke saath clash na ho
+    queueMicrotask(() => {
+      setQualityOptions([]);
+      setCurrentQuality("auto");
+    });
+  }, [src]);
 
   // User ne dropdown se koi quality (ya "Auto") choose kiya
   const handleSelectQuality = (height: "auto" | number) => {

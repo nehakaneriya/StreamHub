@@ -66,7 +66,7 @@ public class CategoryServiceImpl implements CategoryService {
         Category saved = categoryRepository.save(category);
 
         // Nayi category aayi — feed cache ko refresh karo (filter chips pe asar)
-        videoCacheService.evictScrollCache();
+        videoCacheService.evictScrollCacheAfterCommit();
 
         return mapToDto(saved);
     }
@@ -112,7 +112,7 @@ public class CategoryServiceImpl implements CategoryService {
         Category updated = categoryRepository.save(category);
 
         // Feed cache clear karo taaki updated category filter chips pe reflect ho
-        videoCacheService.evictScrollCache();
+        videoCacheService.evictScrollCacheAfterCommit();
 
         return mapToDto(updated);
     }
@@ -134,7 +134,7 @@ public class CategoryServiceImpl implements CategoryService {
         categoryRepository.delete(category);
 
         // Videos ki category badli — cached feed purani ho gayi
-        videoCacheService.evictScrollCache();
+        videoCacheService.evictScrollCacheAfterCommit();
 
         Map<String, Object> response = new HashMap<>();
         response.put("message", "Category deleted. " + moved + " video(s) moved to 'Other'.");

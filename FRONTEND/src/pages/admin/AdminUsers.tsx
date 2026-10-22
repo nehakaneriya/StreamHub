@@ -108,14 +108,14 @@ export default function Users() {
           <ShieldCheck size={16} className="text-red-600" />
           <span className="text-gray-400 text-sm">Admins:</span>
           <span className="font-bold">
-            {users.filter(u => u.roles.some(r => r.name === "ROLE_ADMIN")).length}
+            {users.filter(u => (u.roles ?? []).some(r => r.name === "ROLE_ADMIN")).length}
           </span>
         </div>
         <div className="bg-[#181818] border border-yellow-700/40 rounded-lg px-4 py-2 flex items-center gap-2">
           <ShieldCheck size={16} className="text-yellow-500" />
           <span className="text-gray-400 text-sm">Dual-Role:</span>
           <span className="font-bold text-yellow-500">
-            {users.filter(u => u.roles.length > 1).length}
+            {users.filter(u => (u.roles ?? []).length > 1).length}
           </span>
         </div>
       </div>
@@ -139,8 +139,10 @@ export default function Users() {
 
             <tbody>
               {users.map(user => {
-                const isDualRole = user.roles.length > 1;
-                const isAdmin = user.roles.some(r => r.name === "ROLE_ADMIN");
+                // roles hamesha present nahi hota (backend Set empty/null de sakta hai)
+                const userRoles = user.roles ?? [];
+                const isDualRole = userRoles.length > 1;
+                const isAdmin = userRoles.some(r => r.name === "ROLE_ADMIN");
                 return (
                 <tr
                   key={user.id}
@@ -178,7 +180,7 @@ export default function Users() {
                   {/* Roles */}
                   <td className="p-4">
                     <div className="flex flex-wrap gap-1">
-                      {user.roles.map((role) => (
+                      {userRoles.map((role) => (
                         <span
                           key={role.name}
                           className={`px-2 py-1 rounded-full text-xs font-semibold ${

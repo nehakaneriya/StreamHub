@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import EditVideoModal from "../../components/Video/EditVideoModal";
 import type { Video } from "../../models/Video";
-import { deleteVideo, getMyVideos, getHlsMasterUrl } from "../../service/VideoService";
+import { deleteVideo, getMyVideos, getThumbnailUrl } from "../../service/VideoService";
 import { getCurrentUser } from "@/service/Authservice";
 import useAuthStore from "@/auth/store";
 import type UserT from "@/models/User";
@@ -134,13 +134,16 @@ export default function UserHome() {
                   {/* Title */}
                   <td className="p-4">
                     <div className="flex items-center gap-3">
-                      {/* Video thumbnail — actual video ka first frame */}
+                      {/* Video thumbnail — server-generated first frame */}
                       <div className="relative w-32 aspect-video bg-black rounded-lg overflow-hidden shrink-0">
-                        <video
-                          src={getHlsMasterUrl(video.videoId)}
+                        <img
+                          src={getThumbnailUrl(video.videoId)}
+                          alt={video.title}
                           className="w-full h-full object-cover"
-                          muted
-                          preload="metadata"
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.style.visibility = "hidden";
+                          }}
                         />
                       </div>
                       <div className="min-w-0">

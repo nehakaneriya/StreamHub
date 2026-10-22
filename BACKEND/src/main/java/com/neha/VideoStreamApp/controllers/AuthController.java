@@ -11,6 +11,7 @@ import com.neha.VideoStreamApp.dtos.common.UserDto;
 import com.neha.VideoStreamApp.entities.RefreshToken;
 import com.neha.VideoStreamApp.entities.User;
 import com.neha.VideoStreamApp.exception.BadRequestException;
+import com.neha.VideoStreamApp.exception.TooManyRequestsException;
 import com.neha.VideoStreamApp.repositories.RefreshTokenRepository;
 import com.neha.VideoStreamApp.repositories.UserRepository;
 import com.neha.VideoStreamApp.security.CookieService;
@@ -18,6 +19,7 @@ import com.neha.VideoStreamApp.security.JwtService;
 import com.neha.VideoStreamApp.services.AuthService;
 import com.neha.VideoStreamApp.services.MailService;
 import com.neha.VideoStreamApp.services.OtpService;
+import com.neha.VideoStreamApp.services.RateLimitService;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,6 +35,7 @@ import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -57,16 +60,28 @@ public class AuthController {
     private final OtpService otpService;
     private final MailService mailService;
     private final UserCacheService userCacheService;
+    private final RateLimitService rateLimitService;
 
     @PostMapping("/login")
     public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest loginRequest, HttpServletResponse response) {
+
+        // Brute-force protection — 5 failed attempts ke baad account lock
+        String identifier = loginRequest.email();
+        if (rateLimitService.isLoginBlocked(identifier)) {
+            throw new TooManyRequestsException("Too many failed login attempts. Please try again later.");
+        }
+
         // authenticate
         Authentication authenticate = authenticate(loginRequest);
-        User user = userRepository.findByEmail(loginRequest.email()).orElseThrow(() -> new BadCredentialsException("Invalid Username or Password"));
+        User user = userRepository.findByEmailIgnoreCase(identifier).orElseThrow(() -> new BadCredentialsException("Invalid Username or Password"));
         if (!user.isEnable()) {
             throw new DisabledException("Please verify your email first");
 
         }
+
+        // Login successful — failure counter reset
+        rateLimitService.resetLoginFailures(identifier);
+
         String jti = UUID.randomUUID().toString();
         var refreshTokenOb = RefreshToken.builder()
                 .jti(jti)
@@ -101,6 +116,8 @@ public class AuthController {
             // Unverified (email OTP) ya admin-disabled user — clear message do
             throw new DisabledException("Please verify your email first");
         } catch (Exception e) {
+            // Failed attempt count karo — brute force protection
+            rateLimitService.recordLoginFailure(loginRequest.email());
             throw new BadCredentialsException("Invalid Username or Password !!");
         }
     }
@@ -108,6 +125,7 @@ public class AuthController {
 
     //access and refresh token renew karne lie lie api
     @PostMapping("/refresh")
+    @Transactional
     public ResponseEntity<TokenResponse> refreshToken(
             @RequestBody(required = false) RefreshTokenRequest body,
             HttpServletResponse response,
@@ -126,9 +144,15 @@ public class AuthController {
 
         String jti = jwtService.getJti(refreshToken);
         UUID userId = jwtService.getUserId(refreshToken);
-        RefreshToken storedRefreshToken = refreshTokenRepository.findByJti(jti).orElseThrow(() -> new BadCredentialsException("Refresh token not recognized"));
+        // Pessimistic lock ke saath — concurrent refresh me double-rotation nahi hoga
+        RefreshToken storedRefreshToken = refreshTokenRepository.findByJtiForUpdate(jti)
+                .orElseThrow(() -> new BadCredentialsException("Refresh token not recognized"));
 
         if(storedRefreshToken.isRevoked()){
+            // SECURITY: Reuse detection — pehle revoked token reuse hone par sirf
+            // 401 milta tha aur token family alive rehti thi. Ab poora family
+            // revoke kar dete hain (stolen token ka signal).
+            refreshTokenRepository.revokeAllForUser(storedRefreshToken.getUser().getId());
             throw new BadCredentialsException("Refresh token expired or revoked");
         }
 
@@ -243,20 +267,28 @@ public class AuthController {
     }
 
     // Cancel Registration — OTP dale bina cancel karne par unverified pending user delete ho jaye
+    // SECURITY: Ownership proof ke liye OTP zaroori hai — pehle koi bhi unauthenticated
+    // caller kisi bhi email ka pending account delete kar sakta tha.
     @PostMapping("/cancel-registration")
     public ResponseEntity<Map<String, Object>> cancelRegistration(
             @RequestBody(required = false) Map<String, String> body,
-            @RequestParam(required = false) String email
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String otp
     ) {
         String targetEmail = email;
+        String targetOtp = otp;
         if ((targetEmail == null || targetEmail.isBlank()) && body != null) {
             targetEmail = body.get("email");
+            targetOtp = body.get("otp");
         }
         if (targetEmail == null || targetEmail.isBlank()) {
             throw new BadRequestException("Email is required to cancel registration");
         }
+        if (targetOtp == null || targetOtp.isBlank()) {
+            throw new BadRequestException("OTP is required to cancel registration");
+        }
 
-        authService.cancelRegistration(targetEmail);
+        authService.cancelRegistration(targetEmail, targetOtp);
         return ResponseEntity.ok(Map.of("message", "Registration cancelled successfully"));
     }
 
@@ -265,16 +297,25 @@ public class AuthController {
     // OTP ko verify karo — match hone par user enable=true
     @PostMapping("/verify-otp")
     public ResponseEntity<Map<String, Object>> verifyOtp(@RequestBody VerifyOtpRequest req) {
-        User user = userRepository.findByEmail(req.email())
-                .orElseThrow(() -> new BadRequestException("User not found with this email"));
+
+        // Brute-force protection — OTP guess karke 10^6 combinations try na ho sakein
+        if (rateLimitService.isOtpBlocked(req.email())) {
+            throw new TooManyRequestsException("Too many verification attempts. Please request a new OTP.");
+        }
+
+        User user = userRepository.findByEmailIgnoreCase(req.email())
+                .orElseThrow(() -> new BadRequestException("Invalid or expired OTP. Please try again or resend."));
 
         if (user.isEnable()) {
-            throw new BadRequestException("Email is already verified");
+            throw new BadRequestException("Invalid or expired OTP. Please try again or resend.");
         }
 
         if (!otpService.verify(req.email(), req.otp())) {
+            rateLimitService.recordOtpFailure(req.email());
             throw new BadRequestException("Invalid or expired OTP. Please try again or resend.");
         }
+
+        rateLimitService.resetOtpFailures(req.email());
 
         user.setEnable(true);
         userRepository.save(user);
@@ -286,11 +327,17 @@ public class AuthController {
     // Naya OTP bhejo (cooldown 60 sec ka hota hai)
     @PostMapping("/resend-otp")
     public ResponseEntity<Map<String, Object>> resendOtp(@RequestBody ResendOtpRequest req) {
-        User user = userRepository.findByEmail(req.email())
-                .orElseThrow(() -> new BadRequestException("User not found with this email"));
+
+        // Resend bhi limited — warna email spam / OTP flooding ho sakti hai
+        if (rateLimitService.isResendBlocked(req.email())) {
+            throw new TooManyRequestsException("Too many OTP requests. Please try again later.");
+        }
+
+        User user = userRepository.findByEmailIgnoreCase(req.email())
+                .orElseThrow(() -> new BadRequestException("If the account exists, a new OTP has been sent."));
 
         if (user.isEnable()) {
-            throw new BadRequestException("Email is already verified");
+            throw new BadRequestException("If the account exists, a new OTP has been sent.");
         }
 
         if (!otpService.canResend(req.email())) {
@@ -298,6 +345,7 @@ public class AuthController {
         }
 
         String otp = otpService.generateAndStore(req.email());
+        rateLimitService.recordResend(req.email());
         mailService.sendOtpEmail(req.email(), user.getName(), otp);
 
         return ResponseEntity.ok(Map.of("message", "A new OTP has been sent to your email."));
@@ -310,7 +358,7 @@ public class AuthController {
         if (authentication == null || authentication.getName() == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        User user = userRepository.findByEmail(authentication.getName())
+        User user = userRepository.findByEmailIgnoreCase(authentication.getName())
                 .orElseThrow(() -> new BadCredentialsException("User not found"));
         return ResponseEntity.ok(mapper.map(user, UserDto.class));
     }
@@ -319,8 +367,13 @@ public class AuthController {
     @PostMapping("/admin/login")
     public ResponseEntity<TokenResponse> adminLogin(@RequestBody LoginRequest loginRequest, HttpServletResponse response) {
 
+        // Admin login par bhi brute-force protection
+        if (rateLimitService.isLoginBlocked("admin:" + loginRequest.email())) {
+            throw new TooManyRequestsException("Too many failed login attempts. Please try again later.");
+        }
+
         Authentication authenticate = authenticate(loginRequest);
-        User user = userRepository.findByEmail(loginRequest.email())
+        User user = userRepository.findByEmailIgnoreCase(loginRequest.email())
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
         if (!user.isEnable()) throw new DisabledException("User is disabled");
@@ -328,7 +381,13 @@ public class AuthController {
         // Sirf ADMIN allow karo
         boolean isAdmin = user.getRoles().stream()
                 .anyMatch(r -> r.getName().equals("ROLE_ADMIN"));
-        if (!isAdmin) throw new BadCredentialsException("Access denied: not an admin");
+        // "not an admin" vs "wrong password" alag message se user enumeration hota tha
+        if (!isAdmin) {
+            rateLimitService.recordLoginFailure("admin:" + loginRequest.email());
+            throw new BadCredentialsException("Invalid credentials");
+        }
+
+        rateLimitService.resetLoginFailures("admin:" + loginRequest.email());
 
         String jti = UUID.randomUUID().toString();
         var refreshTokenOb = RefreshToken.builder()
@@ -350,6 +409,7 @@ public class AuthController {
     }
 
     @PostMapping("/admin/refresh")
+    @Transactional
     public ResponseEntity<TokenResponse> adminRefreshToken(
             HttpServletResponse response,
             HttpServletRequest request
@@ -363,10 +423,15 @@ public class AuthController {
 
         String jti = jwtService.getJti(refreshToken);
         UUID userId = jwtService.getUserId(refreshToken);
-        RefreshToken stored = refreshTokenRepository.findByJti(jti)
+        // Pessimistic lock ke saath — concurrent refresh me double-rotation nahi hoga
+        RefreshToken stored = refreshTokenRepository.findByJtiForUpdate(jti)
                 .orElseThrow(() -> new BadCredentialsException("Refresh token not recognized"));
 
-        if (stored.isRevoked()) throw new BadCredentialsException("Refresh token revoked");
+        if (stored.isRevoked()) {
+            // Reuse detection — poora family revoke
+            refreshTokenRepository.revokeAllForUser(stored.getUser().getId());
+            throw new BadCredentialsException("Refresh token revoked");
+        }
         if (stored.getExpiresAt().isBefore(Instant.now())) throw new BadCredentialsException("Refresh token expired");
         if (!stored.getUser().getId().equals(userId)) throw new BadCredentialsException("Token mismatch");
 

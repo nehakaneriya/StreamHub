@@ -10,5 +10,7 @@ import lombok.*;
 public class CustomMessage {
 
     private String message;
+
+    @Builder.Default
     private boolean success=false;
 }

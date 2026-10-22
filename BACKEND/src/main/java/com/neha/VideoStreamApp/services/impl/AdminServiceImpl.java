@@ -1,6 +1,7 @@
 package com.neha.VideoStreamApp.services.impl;
 
 import com.neha.VideoStreamApp.config.AppConstants;
+import com.neha.VideoStreamApp.cache.UserCacheService;
 import com.neha.VideoStreamApp.dtos.response.AdminDashboardDto;
 import com.neha.VideoStreamApp.dtos.common.UserDto;
 import com.neha.VideoStreamApp.dtos.response.CategoryStatsDto;
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +38,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminServiceImpl implements AdminService {
 
+    // Admin listing ke liye max rows (memory exhaustion se bachao)
+    private static final int MAX_ADMIN_LIST_SIZE = 1000;
+
     private final Logger logger = LoggerFactory.getLogger(AdminServiceImpl.class);
     private final UserRepository userRepository;
     private final VideoRepository videoRepository;
@@ -45,27 +50,16 @@ public class AdminServiceImpl implements AdminService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final CommentRepository commentRepository;
     private final CategoryRepository categoryRepository;
+    private final UserCacheService userCacheService;
 
     @Override
     public AdminDashboardDto getDashboardStats() {
 
+        // Counts DB side — pehle do baar findAll() call hota tha (poori table memory me)
         long totalUsers = userRepository.count();
         long totalVideos = videoRepository.count();
-        long activeUsers = userRepository.findAll()
-                .stream()
-                .filter(User::isEnable)
-                .count();
-
-        long adminsCount = userRepository.findAll()
-                .stream()
-                .filter(user ->
-                        user.getRoles()
-                                .stream()
-                                .anyMatch(role ->
-                                        role.getName().equals("ROLE_ADMIN")
-                                )
-                )
-                .count();
+        long activeUsers = userRepository.countByEnableTrue();
+        long adminsCount = userRepository.countByRoles_Name("ROLE_" + AppConstants.ADMIN_ROLE);
 
         return AdminDashboardDto.builder()
                 .totalUsers(totalUsers)
@@ -79,7 +73,9 @@ public class AdminServiceImpl implements AdminService {
     @Override
     public List<UserDto> getAllUsers() {
 
-        return userRepository.findAll()
+        // Bounded — unbounded findAll() poori user table memory me load karta tha
+        return userRepository.findAll(PageRequest.of(0, MAX_ADMIN_LIST_SIZE))
+                .getContent()
                 .stream()
                 .map(user -> modelMapper.map(user, UserDto.class))
                 .collect(Collectors.toList());
@@ -121,11 +117,16 @@ public class AdminServiceImpl implements AdminService {
         // Step 2: Refresh tokens delete karo
         refreshTokenRepository.deleteByUser(user);
 
-        // Step 3: User delete karo (JPA cascade baaki DB records hatayega)
+        // Step 3: User cache evict karo — nahi to deleted user 60 min tak
+        // cached credentials se authenticate hota rahega
+        userCacheService.evictUserCache(userId.toString());
+
+        // Step 4: User delete karo (JPA cascade baaki DB records hatayega)
         userRepository.delete(user);
     }
 
     @Override
+    @Transactional
     public void assignAdminRole(UUID userId) {
 
         User user = userRepository.findById(userId)
@@ -142,10 +143,13 @@ public class AdminServiceImpl implements AdminService {
         if (!user.getRoles().contains(adminRole)) {
             user.getRoles().add(adminRole);
             userRepository.save(user);
+            // Role cache evict — nahi to promote/demote 60 min tak effect na dikhe
+            userCacheService.evictUserCache(userId.toString());
         }
     }
 
     @Override
+    @Transactional
     public void removeAdminRole(UUID userId) {
 
         User user = userRepository.findById(userId)
@@ -161,12 +165,16 @@ public class AdminServiceImpl implements AdminService {
 
         user.getRoles().remove(adminRole);
         userRepository.save(user);
+        // Role cache evict — demoted admin turant privileges lose kare
+        userCacheService.evictUserCache(userId.toString());
     }
 
     @Override
     public List<VideoDto> getAllVideos() {
 
-        List<VideoDto> videos = videoRepository.findAll()
+        // Bounded — unbounded findAll() poori video table memory me load karta tha
+        List<VideoDto> videos = videoRepository.findAll(PageRequest.of(0, MAX_ADMIN_LIST_SIZE))
+                .getContent()
                 .stream()
                 .map(this::mapToVideoDto)
                 .toList();

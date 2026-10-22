@@ -5,6 +5,7 @@ import com.neha.VideoStreamApp.cache.JwtBlacklistService;
 import com.neha.VideoStreamApp.cache.UserCacheService;
 import com.neha.VideoStreamApp.entities.User;
 import com.neha.VideoStreamApp.helper.UserHelper;
+import com.neha.VideoStreamApp.redis.UserKeyGenerator;
 import com.neha.VideoStreamApp.repositories.UserRepository;
 import io.jsonwebtoken.*;
 import jakarta.servlet.FilterChain;
@@ -51,7 +52,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 // 1. Check Redis Blacklist (Logout status check)
                 if (jwtBlacklistService.isTokenBlacklisted(token)) {
-                    logger.warn("[JWT-AUTH][BLACKLISTED-TOKEN] Blacklisted Token Attempted: {}", token);
+                    // Raw token log mat karo — sirf fingerprint
+                    logger.warn("[JWT-AUTH][BLACKLISTED-TOKEN] Blacklisted Token Attempted: tokenFp={}",
+                            UserKeyGenerator.tokenFingerprint(token));
                     request.setAttribute("error", "Token is revoked or user logged out");
                     filterChain.doFilter(request, response);
                     return;
@@ -124,9 +127,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        // Context path hatao — warna servlet context configure karne par path match nahi hota
         String uri = request.getRequestURI();
-        // /auth/me ko filter karo — authenticated endpoint hai
-        if (uri.equals("/api/v1/auth/me")) return false;
-        return uri.startsWith("/api/v1/auth");
+        String contextPath = request.getContextPath();
+        if (contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)) {
+            uri = uri.substring(contextPath.length());
+        }
+
+        // /auth/me protected endpoint hai — isko filter karna hai
+        if (uri.equals("/api/v1/auth/me")) {
+            return false;
+        }
+        // Path SEGMENT match — pehle `startsWith("/api/v1/auth")` tha jo
+        // "/api/v1/authorization..." jaise future paths ko bhi match kar deta tha
+        return uri.equals("/api/v1/auth") || uri.startsWith("/api/v1/auth/");
     }
 }

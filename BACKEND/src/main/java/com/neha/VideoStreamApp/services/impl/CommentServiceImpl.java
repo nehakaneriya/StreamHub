@@ -10,6 +10,7 @@ import com.neha.VideoStreamApp.repositories.UserRepository;
 import com.neha.VideoStreamApp.repositories.VideoRepository;
 import com.neha.VideoStreamApp.services.CommentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class CommentServiceImpl implements CommentService {
+
+    // Admin listing ke liye max rows (memory exhaustion se bachao)
+    private static final int MAX_ADMIN_LIST_SIZE = 1000;
 
     private final CommentRepository commentRepository;
     private final UserRepository userRepository;
@@ -65,7 +69,7 @@ public class CommentServiceImpl implements CommentService {
                 .build();
 
         Comment saved = commentRepository.save(comment);
-        return mapToDto(saved);
+        return mapToDtoPublic(saved);
     }
 
     @Override
@@ -106,7 +110,11 @@ public class CommentServiceImpl implements CommentService {
     // ── ADMIN ─────────────────────────────────────────────────────────────
     @Override
     public List<CommentDto> getAllComments() {
-        return commentRepository.findAllByOrderByCreatedAtDesc()
+        // Bounded — unbounded findAll() poori platform ki comments memory me
+        // load kar deta tha (OOM risk)
+        return commentRepository
+                .findAllByOrderByCreatedAtDesc(PageRequest.of(0, MAX_ADMIN_LIST_SIZE))
+                .getContent()
                 .stream()
                 .map(this::mapToDto)
                 .collect(Collectors.toList());
@@ -136,6 +144,10 @@ public class CommentServiceImpl implements CommentService {
         return mapToDto(commentRepository.save(comment));
     }
 
+    /**
+     * Admin listing ke liye mapping — email ke saath.
+     * (sirf /api/v1/admin/comments par use hoti hai, jo ADMIN-only hai)
+     */
     private CommentDto mapToDto(Comment comment) {
         return CommentDto.builder()
                 .id(comment.getId())
@@ -151,12 +163,33 @@ public class CommentServiceImpl implements CommentService {
                 .build();
     }
 
+    /**
+     * PUBLIC mapping — email ke bina.
+     *
+     * SECURITY: Comment list public endpoint par hai, aur pehle har commenter ka
+     * email address response me chala jata tha. Ab sirf userId + userName
+     * jaata hai (frontend ownership check userId se karta hai).
+     */
+    private CommentDto mapToDtoPublic(Comment comment) {
+        return CommentDto.builder()
+                .id(comment.getId())
+                .text(comment.getText())
+                .createdAt(comment.getCreatedAt())
+                .videoId(comment.getVideo() != null ? comment.getVideo().getVideoId() : null)
+                .videoTitle(comment.getVideo() != null ? comment.getVideo().getTitle() : null)
+                .userId(comment.getUser().getId() != null ? comment.getUser().getId().toString() : null)
+                .userName(comment.getUser().getName())
+                .parentCommentId(comment.getParentComment() != null ? comment.getParentComment().getId() : null)
+                .hidden(comment.isHidden())
+                .build();
+    }
+
     // Top-level comment ke saath uske saare replies bhi nest karke deta hai (oldest reply pehle — natural reading order)
     private CommentDto mapToDtoWithReplies(Comment comment) {
-        CommentDto dto = mapToDto(comment);
+        CommentDto dto = mapToDtoPublic(comment);
         List<CommentDto> replyDtos = comment.getReplies().stream()
                 .sorted((a, b) -> a.getCreatedAt().compareTo(b.getCreatedAt()))
-                .map(this::mapToDto)
+                .map(this::mapToDtoPublic)
                 .collect(Collectors.toList());
         dto.setReplies(replyDtos);
         return dto;

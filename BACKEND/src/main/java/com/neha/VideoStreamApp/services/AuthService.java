@@ -6,5 +6,5 @@ public interface AuthService {
 
     UserDto registerUser(UserDto userDto);
 
-    void cancelRegistration(String email);
+    void cancelRegistration(String email, String otp);
 }

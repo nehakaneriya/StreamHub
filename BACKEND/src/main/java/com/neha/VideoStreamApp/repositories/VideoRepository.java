@@ -29,4 +29,11 @@ public interface VideoRepository extends JpaRepository<Video,String>, JpaSpecifi
     // Admin: har category me kitne videos hain — [category, count] pairs
     @Query("SELECT v.category, COUNT(v) FROM Video v GROUP BY v.category")
     List<Object[]> countGroupedByCategory();
+
+    // Atomic view count increment — DB level me.
+    // Pehle read-modify-write hota tha (setViewCount(get+1)) jo concurrent
+    // requests me updates lose karta tha.
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("UPDATE Video v SET v.viewCount = v.viewCount + 1 WHERE v.videoId = :videoId")
+    int incrementViewCount(@Param("videoId") String videoId);
 }

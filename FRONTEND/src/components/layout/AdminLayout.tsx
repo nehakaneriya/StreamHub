@@ -1,8 +1,7 @@
-import { NavLink, Outlet, Navigate } from "react-router-dom";
-import { useState, useEffect, useRef } from "react";
+import { NavLink, Outlet } from "react-router-dom";
+import { useState } from "react";
 import { Menu, LayoutDashboard, Users, Video, LogOut, MessageSquare, MessageCircle, X, Tag } from "lucide-react";
 import useAdminStore from "@/auth/adminStore";
-import { adminRefreshToken } from "@/service/Authservice";
 import LogoutConfirmModal from "@/components/layout/LogoutConfirmModal";
 
 export default function AdminLayout() {
@@ -11,52 +10,15 @@ export default function AdminLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  const adminUser = useAdminStore((state) => state.adminUser);
-  const adminStatus = useAdminStore((state) => state.adminStatus);
-  const adminToken = useAdminStore((state) => state.adminToken);
+  // NOTE: Auth guard ab RequireAdmin component me hai (main.tsx me).
+  // Yahan duplicate restore/guard logic nahi rakhi jaati.
   const adminLogout = useAdminStore((state) => state.adminLogout);
-
-  const needsRestoring = !!(adminStatus && adminUser && !adminToken);
-  const [restoring, setRestoring] = useState(needsRestoring);
-  const hasFetched = useRef(false);
-
-  useEffect(() => {
-    if (hasFetched.current) return;
-    hasFetched.current = true;
-
-    if (needsRestoring) {
-      adminRefreshToken()
-        .then((res) => {
-          useAdminStore.setState({
-            adminToken: res.accessToken,
-            adminUser: res.user,
-            adminStatus: true,
-          });
-        })
-        .catch(() => {
-          adminLogout();
-        })
-        .finally(() => setRestoring(false));
-    }
-  }, [needsRestoring, adminLogout]);
 
   const handleLogoutConfirm = async () => {
     setShowLogoutModal(false);
     await adminLogout();
     window.location.href = "/admin-login";
   };
-
-  if (restoring) {
-    return (
-      <div className="flex min-h-screen bg-[#0f0f0f] items-center justify-center">
-        <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (!adminStatus || !adminUser) {
-    return <Navigate to="/admin-login" replace />;
-  }
 
   return (
     <div className="flex min-h-screen bg-[#0f0f0f] text-white">

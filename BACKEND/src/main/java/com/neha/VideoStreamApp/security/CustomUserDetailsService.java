@@ -20,7 +20,8 @@ public class CustomUserDetailsService implements UserDetailsService {
 
         // Authentication ke liye DB se hi user lo — password chahiye, jo cache me nahi hota.
         // Redis cache se cached user (bina password ke) return karne par password check fail ho jata hai.
-        return userRepository.findByEmail(username)
+        // Email case-insensitive lookup — warna "A@x.com" aur "a@x.com" do alag account ban jate the.
+        return userRepository.findByEmailIgnoreCase(username)
                 .orElseThrow(() -> new BadCredentialsException("Invalid email or password!!"));
     }
 }

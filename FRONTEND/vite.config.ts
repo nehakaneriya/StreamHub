@@ -4,8 +4,11 @@ import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 export default defineConfig(({ mode }) => {
-  // .env file load karo
-  const env = loadEnv(mode, process.cwd(), '');
+  // .env file load karo — sirf VITE_ prefixed variables.
+  // NOTE: Pehle `loadEnv(mode, process.cwd(), '')` tha (empty prefix) — jo
+  // non-VITE secrets ko bhi config me le aata tha. Ab empty prefix hataya gaya
+  // hai taaki sirf client-safe VITE_* vars load hon.
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
 
   const backendUrl = env.VITE_BACKEND_URL || 'http://localhost:2911';
 
@@ -16,7 +19,10 @@ export default defineConfig(({ mode }) => {
       port: 1304,
       strictPort: true,
 
-      // Dev proxy — CORS issues avoid honge
+      // Dev proxy — CORS issues avoid honge.
+      // NOTE: Ye tabhi use hota hai jab frontend RELATIVE base URL use kare
+      // (VITE_API_BASE_URL=/api/v1). Absolute URL (http://localhost:2911/api/v1)
+      // set karne par requests seedha backend jaati hain aur proxy bypass ho jata hai.
       proxy: {
         '/api': {
           target: backendUrl,

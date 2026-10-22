@@ -1,6 +1,8 @@
 package com.neha.VideoStreamApp.repositories;
 
 import com.neha.VideoStreamApp.entities.Feedback;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -16,4 +18,7 @@ public interface FeedbackRepository extends JpaRepository<Feedback, String> {
 
     // Method to find all feedbacks ordered by creation date in descending order
     List<Feedback> findAllByOrderByCreatedAtDesc();
+
+    // Paginated version (unbounded findAll memory exhaustion kar sakta tha)
+    Page<Feedback> findAllByOrderByCreatedAtDesc(Pageable pageable);
 }

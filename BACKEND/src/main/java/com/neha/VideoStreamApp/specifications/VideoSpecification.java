@@ -26,10 +26,13 @@ public class VideoSpecification {
             List<Predicate> predicates = new ArrayList<>();
 
             if (search != null && !search.isEmpty()) {
-               String like= "%" + search.toLowerCase() + "%";
+               // SECURITY: search ko seedha LIKE pattern me daalne se "%" ya "_"
+               // wildcard ban jata tha — search "%" poori table match kar deta tha
+               // (full scan + catalogue dump). Ab wildcard characters escape karte hain.
+               String like = "%" + escapeLikePattern(search.toLowerCase()) + "%";
                 predicates.add(cb.or(
-                        cb.like(cb.lower(root.get("title")), like),
-                        cb.like(cb.lower(root.get("description")), like)));
+                        cb.like(cb.lower(root.get("title")), like, '\\'),
+                        cb.like(cb.lower(root.get("description")), like, '\\')));
             }
 
             // Filter by User
@@ -83,5 +86,12 @@ public class VideoSpecification {
             }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    // LIKE pattern me wildcard characters (%, _, \) escape karo
+    private static String escapeLikePattern(String value) {
+        return value.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 }

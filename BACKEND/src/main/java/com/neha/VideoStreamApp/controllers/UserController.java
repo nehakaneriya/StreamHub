@@ -21,12 +21,17 @@ public class UserController {
     private final UserService userService;
 
     //create user api
+    // Sirf ADMIN — koi bhi logged-in user apna account enable karwa sakta tha
+    // (registration bypass). Normal user registration sirf /api/v1/auth/register se.
+    @PreAuthorize("hasRole('"+ AppConstants.ADMIN_ROLE +"')")
     @PostMapping
     public ResponseEntity<UserDto> createUser(@RequestBody UserDto userDto){
         return ResponseEntity.status(HttpStatus.CREATED).body(userService.createUser(userDto));
     }
 
     //get all user api
+    // Sirf ADMIN — pehle ye endpoint kisi bhi authenticated user ko poori user table de raha tha
+    @PreAuthorize("hasRole('"+ AppConstants.ADMIN_ROLE +"')")
     @GetMapping
     public ResponseEntity<Iterable<UserDto>> getAllUsers(){
         return ResponseEntity.ok(userService.getAllUsers());
@@ -42,6 +47,10 @@ public class UserController {
     //api/v1/users/{userId}
     @DeleteMapping("/{userId}")
     public ResponseEntity<Void> deleteUser(@PathVariable("userId") String userId, Authentication authentication){
+
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
 
         //Check: ya apna account hai ya ADMIN hai
         UserDto existingUser = userService.getUserById(userId);
@@ -61,6 +70,10 @@ public class UserController {
     //update user
     @PutMapping("/{userId}")
     public ResponseEntity<UserDto> updateUser(@RequestBody UserDto userDto, @PathVariable("userId") String userId, Authentication authentication){
+
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
 
         // Check: ya apna account hai ya ADMIN hai
         UserDto existingUser = userService.getUserById(userId);

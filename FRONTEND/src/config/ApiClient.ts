@@ -1,29 +1,55 @@
 import useAuthStore from "@/auth/store";
 import useAdminStore from "@/auth/adminStore";
 import { refreshToken, adminRefreshToken } from "@/service/Authservice";
+import { API_BASE_URL } from "@/config/env";
 import axios from "axios";
 
 
 const apiClient = axios.create({
-    baseURL:import.meta.env.VITE_API_BASE_URL || "http://localhost:2911/api/v1",
+    baseURL: API_BASE_URL,
     headers: {
         "Content-Type": "application/json",
     },
     withCredentials: true,
-    // timeout: 0 → unlimited (video upload + ffmpeg processing ke liye zaroori)
-    // Individual requests apna timeout set kar sakte hain
-    timeout: 0,
+    // Default timeout 60s — pehle timeout: 0 (unlimited) tha jisse ek hung
+    // backend request UI ko indefinitely spin karte rahi. Upload jaise
+    // long-running requests per-call override kar sakte hain.
+    timeout: 60_000,
 });
 
-// JWT automatically attach karega — admin token ko priority dega
+/**
+ * Admin request detection.
+ *
+ * SECURITY/CORRECTNESS: Pehle `url.includes("/admin")` use hota tha — jo
+ * (a) user-controlled path segment me "/admin" hone par false positive deta tha,
+ * aur (b) admin aur user ke liye SAME refresh queue use karta tha, jisse ek
+ * admin request user token ke saath replay ho jata tha (403) aur vice versa.
+ *
+ * Ab alag-alag queues hain aur URL ka path prefix match hota hai.
+ */
+const ADMIN_PATH_PREFIX = "/admin";
+
+function isAdminRequest(url: string | undefined): boolean {
+    if (!url) return false;
+    // URL se query string hatao, phir path ka prefix dekho
+    const pathOnly = url.split("?")[0];
+    return pathOnly === ADMIN_PATH_PREFIX
+        || pathOnly.startsWith(ADMIN_PATH_PREFIX + "/")
+        || pathOnly.includes("/auth/admin/");
+}
+
+// JWT automatically attach karega
 apiClient.interceptors.request.use((config) => {
     const url = config.url || "";
-    const isAdminRequest = url.includes("/admin");
+    const adminRequest = isAdminRequest(url);
 
     const adminToken = useAdminStore.getState().adminToken;
     const userToken = useAuthStore.getState().accessToken;
 
-    const token = isAdminRequest ? adminToken : userToken;
+    // Admin request ke liye admin token use karo. Agar admin session nahi hai
+    // (admin ne normal /login se login kiya hai) to user token fallback karo —
+    // backend ROLE_ADMIN check karta hai, token ka source matter nahi karta.
+    const token = adminRequest ? (adminToken ?? userToken) : userToken;
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
@@ -34,17 +60,13 @@ apiClient.interceptors.request.use((config) => {
   (error) => Promise.reject(error)
 );
 
-let isRefreshing = false;
-let pendingRequests: ((token: string) => void)[] = [];
-
-function queueRequest(callback: (token: string) => void) {
-  pendingRequests.push(callback);
-}
-
-function resolveQueue(newToken: string) {
-  pendingRequests.forEach((callback) => callback(newToken));
-  pendingRequests = [];
-}
+/**
+ * Refresh queue — user aur admin ke liye SEPARATE.
+ * Pehle ek hi module-level `isRefreshing` flag dono flows ke liye tha, jisse
+ * ek flow ka naya token doosre flow ke queued requests par attach ho jata tha.
+ */
+const userRefreshState = { isRefreshing: false, pending: [] as ((token: string) => void)[] };
+const adminRefreshState = { isRefreshing: false, pending: [] as ((token: string) => void)[] };
 
 // Response interceptor — 401 pe token refresh karo
 apiClient.interceptors.response.use(
@@ -68,35 +90,51 @@ apiClient.interceptors.response.use(
 
     originalRequest._retry = true;
 
-    if (isRefreshing) {
+    const adminRequest = isAdminRequest(originalRequest.url);
+    const state = adminRequest ? adminRefreshState : userRefreshState;
+
+    if (state.isRefreshing) {
       return new Promise((resolve, reject) => {
-        queueRequest((newToken:string) => {
-          if (!newToken) return reject("Token refresh failed");
+        state.pending.push((newToken:string) => {
+          if (!newToken) {
+            // Error object bhejo — string nahi, warna UI ke axios.isAxiosError
+            // checks fail ho jate the aur generic message dikhta tha
+            reject(new Error("Token refresh failed"));
+            return;
+          }
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
           resolve(apiClient(originalRequest));
         });
       });
     }
 
-    isRefreshing = true;
-
-    // Admin request hai ya user request?
-    const url = originalRequest.url || "";
-    const isAdminRequest = url.includes("/admin");
+    state.isRefreshing = true;
 
     try {
       let newToken: string;
 
-      if (isAdminRequest) {
-        // Admin ka alag refresh endpoint
-        const res = await adminRefreshToken();
-        newToken = res.accessToken;
-        if (useAdminStore.getState().adminLogin !== undefined) {
-          useAdminStore.setState({
-            adminToken: newToken,
-            adminUser: res.user,
-            adminStatus: true,
-          });
+      if (adminRequest) {
+        // Admin ka alag refresh endpoint. Agar admin session nahi hai to
+        // user session se refresh karke try karo (admin ne normal /login se
+        // login kiya ho). Dono fail ho to hi logout.
+        try {
+          const res = await adminRefreshToken();
+          newToken = res.accessToken;
+          if (useAdminStore.getState().adminStatus) {
+            useAdminStore.setState({
+              adminToken: newToken,
+              adminUser: res.user,
+              adminStatus: true,
+            });
+          }
+        } catch (adminErr) {
+          const userSessionActive = useAuthStore.getState().authStatus;
+          if (!userSessionActive) {
+            throw adminErr;
+          }
+          const res = await refreshToken();
+          newToken = res.accessToken;
+          useAuthStore.getState().changeLocalLoginData(res.accessToken, res.user, true);
         }
       } else {
         // User ka refresh endpoint
@@ -107,20 +145,29 @@ apiClient.interceptors.response.use(
 
       if (!newToken) throw new Error("Failed to refresh token");
 
-      resolveQueue(newToken);
+      // Is scope ke queued requests resolve karo
+      state.pending.forEach((callback) => callback(newToken));
+      state.pending = [];
+
       originalRequest.headers.Authorization = `Bearer ${newToken}`;
       return apiClient(originalRequest);
 
     } catch(err) {
-      resolveQueue('');
-      if (isAdminRequest) {
-        useAdminStore.getState().adminLogout();
+      // Is scope ke queued requests reject karo
+      state.pending.forEach((callback) => callback(""));
+      state.pending = [];
+
+      if (adminRequest) {
+        // User session bhi nahi hai to hi logout karo
+        if (useAuthStore.getState().authStatus || useAdminStore.getState().adminStatus) {
+          useAdminStore.getState().adminLogout();
+        }
       } else {
         useAuthStore.getState().logout();
       }
       return Promise.reject(err);
     } finally {
-      isRefreshing = false;
+      state.isRefreshing = false;
     }
   }
 );

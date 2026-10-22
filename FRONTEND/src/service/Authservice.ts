@@ -23,8 +23,10 @@ export const resendOtp = async (email: string) => {
 };
 
 // Cancel Registration (bina OTP dale cancel karne par pending unverified user DB se delete ho jaye)
-export const cancelRegistration = async (email: string) => {
-    const response = await apiClient.post<{ message: string }>('/auth/cancel-registration', { email });
+// SECURITY: Backend ab OTP zaroori maangta hai — pehle koi bhi unauthenticated
+// caller kisi bhi email ka pending account delete kar sakta tha.
+export const cancelRegistration = async (email: string, otp: string) => {
+    const response = await apiClient.post<{ message: string }>('/auth/cancel-registration', { email, otp });
     return response.data;
 };
 
@@ -59,9 +61,11 @@ export const refreshToken = async() => {
 }
 
 // Update User Profile — name aur/ya password update karo
+// SECURITY: Password change ke liye currentPassword bhejna zaroori hai
+// (backend verify karta hai — warna hijacked session account lock kar sakta tha)
 export const updateUserProfile = async (
     userId: string,
-    data: { name?: string; password?: string }
+    data: { name?: string; password?: string; currentPassword?: string }
 ): Promise<UserT> => {
     const response = await apiClient.put<UserT>(`/users/${userId}`, data);
     return response.data;

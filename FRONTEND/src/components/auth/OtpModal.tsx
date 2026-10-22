@@ -130,14 +130,25 @@ export default function OtpModal({ email, onSuccess, onClose }: OtpModalProps) {
 
   const handleCancel = async () => {
     if (cancelling || loading) return;
+    // SECURITY: Backend cancellation ke liye OTP maangta hai (ownership proof).
+    // Bina OTP ke account delete nahi hoga — user ko pehle OTP enter karna hoga.
+    if (otp.length !== 6) {
+      toast.error("Enter the 6-digit OTP from your email to cancel registration ❌");
+      return;
+    }
     try {
       setCancelling(true);
       if (email) {
-        await cancelRegistration(email);
+        await cancelRegistration(email, otp);
       }
       toast.info("Registration cancelled");
-    } catch {
-      toast.info("Registration cancelled");
+    } catch (error) {
+      const message =
+        axios.isAxiosError(error) && error.response?.data?.message
+          ? error.response.data.message
+          : "Could not cancel registration ❌";
+      toast.error(message);
+      return;
     } finally {
       setCancelling(false);
       onClose();

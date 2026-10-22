@@ -24,3 +24,18 @@ files:
 file:
   video:
     hls: ${HLS_STORAGE_PATH:videos_hls/}
+
+# ── Upload validation ─────────────────────────────────────────
+app:
+  # App ka display name — email subject + body me use hota hai
+  name: ${APP_NAME:VideoStreamApp}
+  upload:
+    # Hard cap per file (bytes). 100 MB default.
+    max-size-bytes: ${MAX_UPLOAD_SIZE_BYTES:104857600}
+    # Sirf in extensions ki upload allow hogi (extension lowercase me compare hoti hai)
+    allowed-extensions: ${ALLOWED_VIDEO_EXTENSIONS:mp4,mov,avi,mkv,webm,m4v,flv,wmv,mpeg,mpg,3gp,ogv}
+    # Transcode karne wale resolutions. Chhote server (1-2GB RAM) pe kam karo —
+    # har resolution ek alag FFmpeg run hai (CPU + disk + time).
+    # Options: 1080p,720p,480p,240p
+    target-resolutions: ${TARGET_RESOLUTIONS:1080p,720p,480p,240p}
+

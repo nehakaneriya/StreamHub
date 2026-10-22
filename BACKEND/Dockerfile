@@ -17,8 +17,9 @@ FROM eclipse-temurin:21-jre-jammy
 WORKDIR /app
 
 # FFmpeg install karo (HLS video processing ke liye zaroori)
+# curl bhi chahiye — docker healthcheck usse hit karta hai
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg curl && \
     rm -rf /var/lib/apt/lists/*
 
 # Build stage se jar copy karo

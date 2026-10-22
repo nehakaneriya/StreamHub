@@ -7,7 +7,8 @@ export default interface User {
   createdAt?: string;
   provider: string;
 
-  roles: {
+  // NOTE: roles optional hai — backend Set kabhi empty/unmapped bhej sakta hai
+  roles?: {
     id: number;
     name: string;
   }[];

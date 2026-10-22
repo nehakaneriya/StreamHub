@@ -6,6 +6,18 @@
 
 server:
   port: ${SERVER_PORT:2911}
+  # IMPORTANT: nginx ke peeche hone par Spring ko X-Forwarded-* headers
+  # trust karne chahiye — warna OAuth2 redirect URLs galat host banenge
+  # aur generated links (http://backend:2911) bahar leak honge.
+  forward-headers-strategy: framework
+  servlet:
+    # OAuth2 flow state session me store hoti hai — cookie Secure honi chahiye
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: strict
+      timeout: 5m
 
 spring:
   # ── Database ──────────────────────────────────────────────
@@ -24,7 +36,10 @@ spring:
   # ── JPA / Hibernate ───────────────────────────────────────
   jpa:
     hibernate:
-      ddl-auto: validate
+      # NOTE: `validate` sirf tab sahi hai jab schema pehle se exist kare.
+      # PEHLI deployment ke liye DDL_AUTO=update set karo (tables ban jayenge),
+      # phir wapas `validate` pe switch kar do (production me auto-DDL nahi chahiye).
+      ddl-auto: ${DDL_AUTO:validate}
     show-sql: false
     properties:
       hibernate:
@@ -52,6 +67,7 @@ spring:
     # ── JWT ─────────────────────────────────────────────────
     jwt:
       secret: ${JWT_SECRET}           # 64+ chars zaroori — no default
+      allow-ephemeral-secret: false   # prod mein random fallback BAND
       issuer: ${JWT_ISSUER}
       access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:300}
       refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:604800}  # 7 days prod mein
@@ -79,6 +95,15 @@ spring:
           timeout: 5000
           writetimeout: 5000
 
+  # ── Redis (cache + JWT blacklist + OTP) ────────────────────────
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}      # prod me Redis password zaroori hai
+      timeout: 5000ms
+      client-type: JEDIS
+
 # ── Swagger — PROD mein completely OFF ────────────────────────
 springdoc:
   api-docs:
@@ -93,6 +118,7 @@ app:
   otp:
     ttl-seconds: ${OTP_TTL_SECONDS:300}
     resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS:60}
+    log-otp: false                   # prod mein OTP log KABHI nahi hoga
   auth:
     frontend:
       success-redirect: ${FRONT_END_SUCCESS_REDIRECT}
@@ -100,6 +126,21 @@ app:
   admin:
     email: ${ADMIN_EMAIL}
     password: ${ADMIN_PASSWORD}
+  security:
+    blacklist:
+      fail-closed: true                   # prod me revoked token Redis outage me bhi reject
+  dev-tools:
+    enabled: false                       # prod me dev tools BAND (sirf dev me)
+  ratelimit:
+    login:
+      max-attempts: ${RATE_LIMIT_LOGIN_MAX:5}
+      window-minutes: ${RATE_LIMIT_LOGIN_WINDOW:15}
+    otp:
+      max-attempts: ${RATE_LIMIT_OTP_MAX:5}
+      window-minutes: ${RATE_LIMIT_OTP_WINDOW:15}
+    resend:
+      max-attempts: ${RATE_LIMIT_RESEND_MAX:3}
+      window-minutes: ${RATE_LIMIT_RESEND_WINDOW:60}
 
 # ── Logging — Prod mein sirf errors ───────────────────────────
 logging:

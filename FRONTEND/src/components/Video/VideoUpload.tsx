@@ -1,16 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { toast } from "react-toastify";
-import apiClient from "@/config/ApiClient"; 
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { getAllCategories } from "@/service/CategoryService";
+import { uploadVideo } from "@/service/VideoService";
 import type { Category } from "@/models/Category";
 import { CloudUpload, Film, Tag, FileText, X, Loader2, CheckCircle2, Clapperboard } from "lucide-react";
 
 
-// Backend/Nginx limit se match — VideoStreamApp mein max upload size 200MB hai
-const MAX_FILE_SIZE_BYTES = 200 * 1024 * 1024;
-const MAX_FILE_SIZE_LABEL = "200MB";
+// Backend limit se MATCH hona zaroori hai.
+// BACKEND/src/main/resources/application.yml → spring.servlet.multipart.max-file-size = 100MB
+// Pehle yahan 200MB tha — user 200MB tak select kar sakta tha aur server pe
+// "Upload Failed" fail ho jata tha (opaque error).
+const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+const MAX_FILE_SIZE_LABEL = "100MB";
 
 const formatFileSize = (bytes: number) => {
   if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
@@ -89,29 +92,19 @@ export default function VideoUpload() {
       return;
     }
 
-    // Prepare Multipart Form Data
-    const formData = new FormData();
-    formData.append("title", meta.title);
-    formData.append("description", meta.description);
-    formData.append("category", meta.category);
-    formData.append("file", selectedFile);
-
     try {
       setUploading(true);
       setProgress(0);
       setShowSuccess(false);
 
-      // API Call using the custom apiClient (Authorization is handled by interceptor)
-      await apiClient.post("/videos", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        timeout: 0, // 10 minutes timeout for large uploads
-        onUploadProgress: (progressEvent) => {
-          const percent = Math.round(
-            (progressEvent.loaded * 100) / (progressEvent.total || 1)
-          );
-          setProgress(percent);
-        },
-      });
+      // Service layer se upload (Authorization interceptor handle karta hai)
+      await uploadVideo(
+        selectedFile,
+        meta.title,
+        meta.description,
+        meta.category || undefined,
+        (percent) => setProgress(percent)
+      );
 
       setShowSuccess(true);
       toast.success("Video uploaded successfully!");

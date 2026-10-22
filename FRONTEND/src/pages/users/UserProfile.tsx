@@ -21,8 +21,10 @@ export default function UserProfile() {
   const [newName, setNewName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
 
   // OAuth2 user hai ya LOCAL?
   const isOAuthUser = user?.provider && user.provider.toUpperCase() !== "LOCAL";
@@ -44,8 +46,10 @@ export default function UserProfile() {
     setNewName(user?.name || "");
     setNewPassword("");
     setConfirmPassword("");
+    setCurrentPassword("");
     setShowPassword(false);
     setShowConfirm(false);
+    setShowCurrent(false);
     setShowModal(true);
   };
 
@@ -63,6 +67,11 @@ export default function UserProfile() {
     }
 
     if (!isOAuthUser && newPassword) {
+      // SECURITY: Current password zaroori hai (backend verify karta hai)
+      if (!currentPassword) {
+        toast.error("Please enter your current password to change it");
+        return;
+      }
       if (newPassword.length < 6) {
         toast.error("Password must be at least 6 characters");
         return;
@@ -83,6 +92,10 @@ export default function UserProfile() {
         toast.error("Passwords do not match");
         return;
       }
+      if (newPassword === currentPassword) {
+        toast.error("New password must be different from the current password");
+        return;
+      }
     }
 
     // Kuch change hua?
@@ -98,9 +111,12 @@ export default function UserProfile() {
     try {
       setSaving(true);
 
-      const payload: { name?: string; password?: string } = {};
+      const payload: { name?: string; password?: string; currentPassword?: string } = {};
       if (nameChanged) payload.name = trimmedName;
-      if (passwordChanged) payload.password = newPassword;
+      if (passwordChanged) {
+        payload.password = newPassword;
+        payload.currentPassword = currentPassword;
+      }
 
       const updatedUser = await updateUserProfile(user!.id, payload);
 
@@ -294,6 +310,32 @@ export default function UserProfile() {
                     <p className="text-xs text-gray-500 mb-3">
                       Leave the password fields blank if you don't want to change your password.
                     </p>
+
+                    {/* Current Password — sirf tab dikhega jab naya password daala ho */}
+                    {newPassword && (
+                      <div className="mb-4">
+                        <label className="text-sm font-medium text-gray-400 block mb-1">
+                          Current Password
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showCurrent ? "text" : "password"}
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            disabled={saving}
+                            className="w-full p-3 pr-10 bg-[#0f0f0f] border border-gray-700 rounded-xl text-white focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 transition disabled:opacity-50"
+                            placeholder="Your current password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowCurrent(!showCurrent)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white cursor-pointer"
+                          >
+                            {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* New Password */}
                     <div className="mb-4">

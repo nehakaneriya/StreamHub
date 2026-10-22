@@ -6,31 +6,42 @@ import com.neha.VideoStreamApp.dtos.common.UserDto;
 import com.neha.VideoStreamApp.entities.Provider;
 import com.neha.VideoStreamApp.entities.Role;
 import com.neha.VideoStreamApp.entities.User;
+import com.neha.VideoStreamApp.entities.Video;
 import com.neha.VideoStreamApp.exception.ResourceNotFoundException;
 import com.neha.VideoStreamApp.helper.UserHelper;
+import com.neha.VideoStreamApp.repositories.RefreshTokenRepository;
 import com.neha.VideoStreamApp.repositories.RoleRepository;
 import com.neha.VideoStreamApp.repositories.UserRepository;
 import com.neha.VideoStreamApp.services.UserService;
+import com.neha.VideoStreamApp.services.VideoService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.StreamSupport;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserServiceImpl implements UserService {
+
+   // User listing ke liye max rows (memory exhaustion se bachao)
+   private static final int MAX_USER_LIST_SIZE = 1000;
 
    private final UserRepository userRepository;
    private final ModelMapper modelMapper;
    private final RoleRepository roleRepository;
    private final PasswordEncoder passwordEncoder;
    private final UserCacheService userCacheService;
+   private final RefreshTokenRepository refreshTokenRepository;
+   private final VideoService videoService;
 
     // Password policy — min 6 chars, at least one letter, one number, one special symbol
     private void validatePassword(String password) {
@@ -70,9 +81,10 @@ public class UserServiceImpl implements UserService {
         // Strong password enforcement (registration)
         validatePassword(userDto.getPassword());
 
-        String cleanEmail = userDto.getEmail().trim();
-        Optional<User> existingUserOpt = userRepository.findByEmail(cleanEmail)
-                .or(() -> userRepository.findByEmail(cleanEmail.toLowerCase()));
+        // Email hamesha lowercase normalize karo — warna "A@x.com" aur "a@x.com"
+        // do alag accounts ban jate the aur login lookup miss hota tha
+        String cleanEmail = userDto.getEmail().trim().toLowerCase();
+        Optional<User> existingUserOpt = userRepository.findByEmailIgnoreCase(cleanEmail);
 
         if (existingUserOpt.isPresent()) {
             User existingUser = existingUserOpt.get();
@@ -90,6 +102,7 @@ public class UserServiceImpl implements UserService {
 
 
         User user = modelMapper.map(userDto, User.class);
+        user.setEmail(cleanEmail);
         user.setProvider(userDto.getProvider()!=null ? userDto.getProvider() : Provider.LOCAL);
 
         user.setPassword(
@@ -112,8 +125,10 @@ public class UserServiceImpl implements UserService {
     @Transactional(readOnly = true)
     public Iterable<UserDto> getAllUsers() {
 
-        return StreamSupport
-                .stream(userRepository.findAll().spliterator(), false)
+        // Bounded — unbounded findAll() poori user table memory me load karta tha
+        return userRepository.findAll(PageRequest.of(0, MAX_USER_LIST_SIZE))
+                .getContent()
+                .stream()
                 .map(user -> modelMapper.map(user, UserDto.class))
                 .toList();
     }
@@ -122,7 +137,7 @@ public class UserServiceImpl implements UserService {
     public UserDto getUserByEmail(String email) {
 
         User user = userRepository
-                .findByEmail(email)
+                .findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with given email id"));
 
         return modelMapper.map(user,UserDto.class);
@@ -147,8 +162,24 @@ public class UserServiceImpl implements UserService {
             existingUser.setName(userDto.getName().trim());
         }
 
-        if(userDto.getPassword()!=null && !userDto.getPassword().isBlank())
+        if(userDto.getPassword()!=null && !userDto.getPassword().isBlank()) {
+            // Password change me current password verify zaroori hai —
+            // warna koi bhi hijacked session account permanently lock kar sakta tha
+            if (userDto.getCurrentPassword() == null || userDto.getCurrentPassword().isBlank()) {
+                throw new IllegalArgumentException("Current password is required to change the password");
+            }
+            if (!passwordEncoder.matches(userDto.getCurrentPassword(), existingUser.getPassword())) {
+                throw new IllegalArgumentException("Current password is incorrect");
+            }
+            // Naye password par bhi wahi policy lage jo registration par lagti hai
+            validatePassword(userDto.getPassword());
+            if (passwordEncoder.matches(userDto.getPassword(), existingUser.getPassword())) {
+                throw new IllegalArgumentException("New password must be different from the current password");
+            }
             existingUser.setPassword(passwordEncoder.encode(userDto.getPassword()));
+            // Password change = saare refresh tokens revoke (baaki devices logout)
+            refreshTokenRepository.deleteByUser(existingUser);
+        }
 
         existingUser.setUpdatedAt(Instant.now());
         User updatedUser = userRepository.save(existingUser);
@@ -159,11 +190,30 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    @Transactional
     public void deleteUser(String userId) {
 
         UUID uId = UserHelper.parseUUID(userId);
         User user = userRepository.findById(uId).orElseThrow(() -> new ResourceNotFoundException("User not found with the given id"));
-        userRepository.delete(user);
 
+        // Refresh tokens delete karo — nahi to deleted user apna refresh token
+        // use karke unlimited naye access tokens banata rhta
+        refreshTokenRepository.deleteByUser(user);
+
+        // Cache evict karo — nahi to deleted user 60 min tak authenticate hota rhta
+        userCacheService.evictUserCache(userId);
+
+        // User ke videos ki files disk se bhi hatao (DB cascade sirf rows delete karta hai)
+        if (user.getVideos() != null) {
+            for (Video video : new ArrayList<>(user.getVideos())) {
+                try {
+                    videoService.delete(video.getVideoId());
+                } catch (Exception e) {
+                    log.warn("Could not delete video files for videoId: {} — {}", video.getVideoId(), e.getMessage());
+                }
+            }
+        }
+
+        userRepository.delete(user);
     }
 }

@@ -1,6 +1,19 @@
 # Environment variables — NEVER commit
 .env
 .env.local
+.env.*
+!.env.example
 
 # Docker
 docker-compose.override.yml
+
+# Generated video files + HLS output (media bada hota hai, repo me nahi chahiye)
+videos/
+videos_hls/
+BACKEND/videos/
+BACKEND/videos_hls/
+FRONTEND/dist/
+BACKEND/target/
+BACKEND/logs/
+logs/
+*.log

@@ -61,8 +61,21 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
 
-                        // ── 1. PUBLIC ─────────────────────────────────────────────────────
+                        // ── 1. PUBLIC (method-agnostic) ────────────────────────────────
                         .requestMatchers(AppConstants.AUTH_PUBLIC_URLS).permitAll()
+
+                        // ── 1a. HEALTH CHECK ─────────────────────────────────────────────
+                        // Public hona zaroori hai — Docker healthcheck aur load balancer
+                        // ise bina token ke hit karte hain. Ye sirf "app alive hai"
+                        // batata hai, koi sensitive data expose nahi karta.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/health").permitAll()
+
+                        // ── 1b. DEV TOOLS ────────────────────────────────────────────────
+                        // Dev-only helpers (jaise /api/v1/dev/mail-test).
+                        // NOTE: Ye controller khud hi `app.dev-tools.enabled=true` par
+                        // load hota hai — QA/Prod me bean create hi nahi hota, to
+                        // endpoint wahan 404 dega (404, 401 nahi).
+                        .requestMatchers("/api/v1/dev/**").permitAll()
 
                         // ── 1b. COMMENTS — GET public (dekhna), POST/DELETE login zaroori ──
                         .requestMatchers(HttpMethod.GET, AppConstants.COMMENTS_GET_PATTERN).permitAll()
@@ -81,42 +94,68 @@ public class SecurityConfig {
                         .requestMatchers(AppConstants.AUTH_ADMIN_URLS)
                         .hasRole(AppConstants.ADMIN_ROLE)
 
-                        // ── 4. VIDEO — UPLOAD (POST) ──────────────────────────────────────
-                        // Login hona zaroori, USER ya ADMIN dono kar sakte hain
-                        .requestMatchers(HttpMethod.POST, "/api/v1/videos")
-                        .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
+                        // ════════════════════════════════════════════════════════════════
+                        // 4. VIDEO — ye rules GENERIC "/api/v1/videos/*" permitAll se
+                        //    PEHLE aane CHAHIYE. Spring Security first-match-wins hai —
+                        //    generic permitAll pehle aata tha to ye rules DEAD CODE the
+                        //    aur upload/delete/update filter-chain pe open the.
+                        // ════════════════════════════════════════════════════════════════
 
-                        // ── 5. VIDEO — DELETE ─────────────────────────────────────────────
-                        // Controller mein ownership check hai (sirf apna video delete hoga)
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/videos/**")
-                        .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
-
-                        // ── 6. VIDEO — MY VIDEOS ──────────────────────────────────────────
-                        // Apne uploaded videos — login zaroori
+                        // 4a. MY VIDEOS — apne uploaded videos (specific rule, generic se pehle)
                         .requestMatchers(HttpMethod.GET, "/api/v1/videos/my-videos")
                         .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
 
-                        // ── 7. USER — EMAIL LOOKUP ────────────────────────────────────────
+                        // 4b. WRITE operations — login zaroori
+                        .requestMatchers(HttpMethod.POST, "/api/v1/videos")
+                        .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/videos/**")
+                        .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/videos/**")
+                        .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/videos/**")
+                        .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
+
+                        // 4c. VIEW count — public hai (guest bhi video dekh sakta hai).
+                        //     Controller khud 24h de-duplication aur rate-limit karta hai.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/videos/*/view")
+                        .permitAll()
+
+                        // 4d. PUBLIC video reads — sirf GET
+                        .requestMatchers(HttpMethod.GET, "/api/v1/videos").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/videos/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/videos/user/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/videos/stream/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/videos/*/master.m3u8").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/videos/*/thumbnail.jpg").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/videos/*/*/playlist.m3u8").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/videos/*/*/*.ts").permitAll()
+
+                        // ── 5. USER — EMAIL LOOKUP ────────────────────────────────────────
                         // /users/email/{email} — login zaroori
+                        // NOTE: ye "/api/v1/users/*" se PEHLE aana chahiye ( niche dekho )
                         .requestMatchers(HttpMethod.GET, "/api/v1/users/email/**")
                         .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
 
-                        // ── 8. USER — UPDATE OWN PROFILE ─────────────────────────────────
+                        // ── 6. USER — LIST / BY-ID (sirf ADMIN) ──────────────────────────
+                        .requestMatchers(HttpMethod.GET, "/api/v1/users", "/api/v1/users/*")
+                        .hasRole(AppConstants.ADMIN_ROLE)
+
+                        // ── 7. USER — UPDATE OWN PROFILE ─────────────────────────────────
                         // PUT /api/v1/users/{id} — Controller mein ownership check hai
                         .requestMatchers(HttpMethod.PUT, "/api/v1/users/**")
                         .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
 
-                        // ── 9. USER — DELETE OWN ACCOUNT ─────────────────────────────────
+                        // ── 8. USER — DELETE OWN ACCOUNT ─────────────────────────────────
                         // DELETE /api/v1/users/{id} — Controller mein ownership check hai
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/users/**")
                         .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
 
-                        // ── 10. FEEDBACK — USER SUBMIT ────────────────────────────────────
+                        // ── 9. FEEDBACK — USER SUBMIT ────────────────────────────────────
                         // POST /api/v1/feedback — login hona zaroori
                         .requestMatchers(HttpMethod.POST, "/api/v1/feedback")
                         .hasAnyRole(AppConstants.USER_ROLE, AppConstants.ADMIN_ROLE)
 
-                        // ── 11. BAKI SAB — authenticated hona zaroori ────────────────────
+                        // ── 10. BAKI SAB — authenticated hona zaroori ────────────────────
                         .anyRequest().authenticated()
                 )
 
@@ -191,13 +230,37 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource(
             @Value("${app.cors.front-end-url}") String corsUrls
     ){
-        String[] urls = corsUrls.trim().split(",");
+        // SECURITY: Origins ko validate karo. Pehle koi bhi comma-separated
+        // string seedha allowedOrigins me daal di jati thi — misconfiguration
+        // (jaise "*" ya galat domain) ke saath allowCredentials(true) ka matlab
+        // hai har authenticated endpoint cross-origin credential surface ban jata.
+        List<String> origins = Arrays.stream(corsUrls.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .peek(origin -> {
+                    if ("*".equals(origin)) {
+                        throw new IllegalStateException(
+                                "CORS origin '*' is not allowed when credentials are enabled. "
+                                        + "Set app.cors.front-end-url to explicit origins.");
+                    }
+                    if (!origin.startsWith("http://") && !origin.startsWith("https://")) {
+                        throw new IllegalStateException(
+                                "Invalid CORS origin '" + origin + "' — must start with http:// or https://");
+                    }
+                })
+                .toList();
+
+        if (origins.isEmpty()) {
+            throw new IllegalStateException(
+                    "No CORS origins configured. Set app.cors.front-end-url (e.g. http://localhost:1304).");
+        }
 
         var config=new CorsConfiguration();
-        config.setAllowedOrigins(Arrays.asList(urls));
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET","POST","DELETE","PUT","OPTIONS","PATCH","HEAD"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Refresh-Token", "X-Requested-With"));
         config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
 
         var source=new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**",config);
