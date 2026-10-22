@@ -66,10 +66,13 @@ spring:
       refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:86400}
       refresh-token-cookie-name: ${JWT_REFRESH_COOKIE_NAME:refreshToken}
       admin-refresh-token-cookie-name: ${JWT_ADMIN_REFRESH_COOKIE_NAME:adminRefreshToken}
-      cookie-secure: false
-      cookie-http-only: true
-      cookie-same-site: lax
-      cookie-domain: localhost
+      # Env se override ho sakta hai — warna AWS/IP deploy me dev profile
+      # bhi localhost domain wali cookie set karta tha (jo browser reject karta hai).
+      cookie-secure: ${JWT_COOKIE_SECURE:false}
+      cookie-http-only: ${JWT_COOKIE_HTTP_ONLY:true}
+      cookie-same-site: ${JWT_COOKIE_SAME_SITE:lax}
+      # Khaali = host-only cookie. IP ya public domain dono pe kaam karta hai.
+      cookie-domain: ${JWT_COOKIE_DOMAIN:}
 
   data:
     redis:

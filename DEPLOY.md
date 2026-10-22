@@ -36,13 +36,37 @@ openssl rand -hex 16
 
 > ⚠️ Ye sab `.env` me daalo — **kabhi commit mat karo**. `JWT_SECRET` galat ya chhota hua to app **start hi nahi hoga** (intentional fail-fast).
 
-### 2.2 Domain + HTTPS
+### 2.2 Domain + HTTPS (AWS EC2 / public IP ke liye MUST)
 
 Prod me `cookie-secure: true` hai → **HTTPS zaroori hai**, warna refresh cookie browser me store hi nahi hoga aur login fail hoga.
 
-- Domain: `app.yourdomain.com`
-- HTTPS: Let's Encrypt (nginx) ya Cloudflare
-- Cert ke liye nginx config me `listen 443 ssl` + cert paths
+> ⚠️ **Google OAuth raw public IP accept nahi karta.** `http://1.2.3.4/...` ko
+> Google Cloud Console redirect URI me add hi nahi karne dega. Sirf `localhost`
+> HTTP pe allowed hai. Isliye AWS EC2 pe Google login ke liye domain + HTTPS
+> compulsory hai.
+
+**Agar domain hai:**
+- EC2 ko **Elastic IP** do (warna stop/start pe IP badal jayega aur OAuth toot jayega)
+- Domain ka `A` record → Elastic IP (e.g. `app.yourdomain.com`)
+- AWS Security Group inbound: `80`, `443` (aur `22` sirf apne IP se)
+- HTTPS: Caddy (sabse easy) ya host Nginx + Let's Encrypt
+- Caddyfile example (frontend container host port `8080` pe hone chahiye):
+  ```
+  app.yourdomain.com {
+      reverse_proxy 127.0.0.1:8080
+  }
+  ```
+
+**Agar domain nahi hai (temporary/test):**
+- `sslip.io` / `nip.io` use karo — IP ka hostname ban jata hai:
+  `13.234.56.78.sslip.io`
+- Caddy isi hostname ka free Let's Encrypt cert le lega. Google Console me bhi
+  yahi hostname daalo, IP nahi.
+- Ye production ke liye ideal nahi — baad me proper domain lagao.
+
+> Caddy/host-nginx TLS terminate kare to `FRONTEND/nginx.conf` ka
+> `X-Forwarded-Proto` preserve karna zaroori hai (repo me already fixed hai).
+> Warna Spring `http://...` redirect_uri banata hai aur Google mismatch deta hai.
 
 ### 2.3 OAuth2 redirect URIs update karo
 
@@ -91,8 +115,10 @@ JWT_ADMIN_REFRESH_COOKIE_NAME=adminRefreshToken
 # HTTPS ke saath ye ZAROORI hain:
 JWT_COOKIE_SECURE=true
 JWT_COOKIE_HTTP_ONLY=true
-JWT_COOKIE_SAME_SITE=strict
-JWT_COOKIE_DOMAIN=app.yourdomain.com
+# Lax — Strict OAuth callback tod deta hai
+JWT_COOKIE_SAME_SITE=lax
+# Khaali = host-only cookie (recommended). Yahan domain/IP mat likho.
+JWT_COOKIE_DOMAIN=
 
 # ══════════════ ADMIN (strong password, policy ke saath) ══════════════
 ADMIN_EMAIL=you@yourdomain.com
@@ -226,9 +252,12 @@ docker compose logs backend | grep -i error
 | **App start nahi hota** | `ADMIN_PASSWORD` policy fail | 8+ chars, 1 letter, 1 number, 1 symbol |
 | **App start nahi hota** | "Unknown database" | MySQL container up nahi — `docker compose logs mysql` |
 | **App start nahi hota** | "Schema-validation failed" | `DDL_AUTO=update` karo pehli deployment ke liye |
-| **Login ke baad hi logout** | Cookie `Secure` but HTTP pe | HTTPS lagao, ya dev me `JWT_COOKIE_SECURE=false` |
+| **Login ke baad hi logout** | Cookie `Secure` but HTTP pe | HTTPS lagao, ya test ke liye `JWT_COOKIE_SECURE=false` |
+| **Cookie set hi nahi hoti** | `JWT_COOKIE_DOMAIN=localhost` (ya IP) | `.env` me `JWT_COOKIE_DOMAIN=` **khaali** rakho |
+| **Google login ke baad localhost khulta hai** | `FRONT_END_*` abhi bhi localhost | Teeno URL public HTTPS domain pe set karo |
+| **`authorization_request_not_found`** | Session cookie `SameSite=Strict` | `SameSite=Lax` (prod profile me code fix ho chuka hai) |
 | **CORS error console me** | `FRONT_END_URL` exact match nahi | Origin copy-paste karo, trailing slash mat rakho |
-| **Google login redirect error** | Redirect URI mismatch | 2.3 ke hisaab se provider me update karo |
+| **Google login redirect error** | Redirect URI mismatch / HTTP IP | 2.3 ke hisaab se provider me **HTTPS** URI add karo |
 | **OTP email nahi aa raha** | SMTP galat / Gmail app password nahi | `MAIL_*` check karo, Gmail me App Password use karo |
 | **Video upload fail (504)** | nginx timeout | `nginx.conf` me 600s already hai — rebuild karo |
 | **Login "Too many attempts"** | Rate limit lag gaya | Redis counter clear karo (niche dekho) |
@@ -297,7 +326,8 @@ docker run --rm -v streamhub_backend-videos:/data -v $(pwd):/backup alpine \
 - [ ] `JWT_SECRET` real 64+ char random
 - [ ] `ADMIN_PASSWORD` strong, `admin123` nahi
 - [ ] `JWT_COOKIE_SECURE=true` + **HTTPS** active
-- [ ] `JWT_COOKIE_SAME_SITE=strict`
+- [ ] `JWT_COOKIE_SAME_SITE=lax` (Strict OAuth login todta hai)
+- [ ] `JWT_COOKIE_DOMAIN=` khaali
 - [ ] `OTP_LOG_ENABLED=false` (prod me OTP log nahi hona chahiye)
 - [ ] `FRONT_END_URL` exact origin
 - [ ] OAuth redirect URIs naye domain ke saath update

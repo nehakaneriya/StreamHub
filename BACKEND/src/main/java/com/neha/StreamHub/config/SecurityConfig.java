@@ -167,7 +167,10 @@ public class SecurityConfig {
                             // Seedha login page pe bhejo with error message
                             res.sendRedirect(frontEndFailureUrl + "?error=" + ex.getMessage());
                         })
-                        // Authorization request cookie mein store karo — session pe depend mat karo
+                        // Authorization request HttpSession me store hoti hai (default).
+                        // Isliye session cookie (JSESSIONID) SameSite=Lax honi chahiye —
+                        // Google se callback cross-site top-level GET hota hai, aur
+                        // Strict me session cookie send nahi hoti (login fail).
                         .authorizationEndpoint(auth ->
                                 auth.authorizationRequestRepository(
                                         new org.springframework.security.oauth2.client.web

@@ -11,12 +11,16 @@ server:
   # aur generated links (http://backend:2911) bahar leak honge.
   forward-headers-strategy: framework
   servlet:
-    # OAuth2 flow state session me store hoti hai — cookie Secure honi chahiye
+    # OAuth2 flow state session me store hoti hai — cookie Secure honi chahiye.
+    # IMPORTANT: same-site STRICT nahi ho sakta. Google se wapas aane wala
+    # callback ek cross-site top-level navigation hai — Strict me JSESSIONID
+    # send hi nahi hota aur login "authorization_request_not_found" pe fail
+    # ho jata hai. Lax top-level GET pe cookie bhejta hai (OAuth ke liye sahi).
     session:
       cookie:
         secure: true
         http-only: true
-        same-site: strict
+        same-site: lax
       timeout: 5m
 
 spring:
@@ -73,10 +77,15 @@ spring:
       refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:604800}  # 7 days prod mein
       refresh-token-cookie-name: ${JWT_REFRESH_COOKIE_NAME:refreshToken}
       admin-refresh-token-cookie-name: ${JWT_ADMIN_REFRESH_COOKIE_NAME:adminRefreshToken}
-      cookie-secure: true             # Prod mein HTTPS zaroori
-      cookie-http-only: true
-      cookie-same-site: strict        # Prod mein strict
-      cookie-domain: ${JWT_COOKIE_DOMAIN}
+      # Prod mein HTTPS zaroori hai. Agar HTTP pe test kar rahe ho to
+      # JWT_COOKIE_SECURE=false karo — warna browser Secure cookie reject karega.
+      cookie-secure: ${JWT_COOKIE_SECURE:true}
+      cookie-http-only: ${JWT_COOKIE_HTTP_ONLY:true}
+      # Lax — OAuth redirect ke baad refresh flow ke liye safe aur compatible.
+      cookie-same-site: ${JWT_COOKIE_SAME_SITE:lax}
+      # Khaali = host-only cookie (recommended). IP-based deploy me domain
+      # kabhi bhi set mat karo — browser Domain=<IP> wali cookie reject karta hai.
+      cookie-domain: ${JWT_COOKIE_DOMAIN:}
 
   # ── Mail (email verification / OTP) ─────────────────────────
   mail:
