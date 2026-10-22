@@ -1,6 +1,6 @@
 spring:
   application:
-    name: VideoStreamApp
+    name: StreamHub
 
   # Active profile — env variable se override ho sakta hai
   profiles:
@@ -28,7 +28,7 @@ file:
 # ── Upload validation ─────────────────────────────────────────
 app:
   # App ka display name — email subject + body me use hota hai
-  name: ${APP_NAME:VideoStreamApp}
+  name: ${APP_NAME:StreamHub}
   upload:
     # Hard cap per file (bytes). 100 MB default.
     max-size-bytes: ${MAX_UPLOAD_SIZE_BYTES:104857600}

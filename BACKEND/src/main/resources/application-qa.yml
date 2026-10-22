@@ -10,7 +10,7 @@ server:
 spring:
   # ── Database — QA ka alag test database ───────────────────
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/videostreamdb}
+    url: ${DB_URL:jdbc:mysql://localhost:3306/streamhubdb}
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:root}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -51,7 +51,7 @@ spring:
       # QA mein bhi secret env se hi aayega — koi hardcoded fallback nahi.
       secret: ${JWT_SECRET:}
       allow-ephemeral-secret: false
-      issuer: ${JWT_ISSUER:qa.videostream.com}
+      issuer: ${JWT_ISSUER:qa.streamhub.com}
       access-ttl-seconds: ${JWT_ACCESS_TTL_SECONDS:600}    # QA mein thoda zyada time
       refresh-ttl-seconds: ${JWT_REFRESH_TTL_SECONDS:86400}
       refresh-token-cookie-name: ${JWT_REFRESH_COOKIE_NAME:refreshToken}
@@ -67,7 +67,7 @@ spring:
     port: ${MAIL_PORT:587}
     username: ${MAIL_USERNAME:}
     password: ${MAIL_PASSWORD:}
-    from: ${MAIL_FROM:no-reply@videostream.com}
+    from: ${MAIL_FROM:no-reply@streamhub.com}
     properties:
       mail:
         smtp:
@@ -112,7 +112,7 @@ app:
       success-redirect: ${FRONT_END_SUCCESS_REDIRECT:http://localhost:1304/oauth/success}
       failure-redirect: ${FRONT_END_FAILURE_REDIRECT:http://localhost:1304/oauth/failure}
   admin:
-    email: ${ADMIN_EMAIL:qa-admin@videostream.com}
+    email: ${ADMIN_EMAIL:qa-admin@streamhub.com}
     password: ${ADMIN_PASSWORD:}          # Blank hoga to random password log hoga
     seed-enabled: ${ADMIN_SEED_ENABLED:true}
   security:
@@ -135,6 +135,6 @@ app:
 logging:
   level:
     root: WARN
-    com.neha.VideoStreamApp: DEBUG    # App ka code debug level pe
+    com.neha.StreamHub: DEBUG    # App ka code debug level pe
     org.springframework.security: INFO
     org.springframework.web: WARN

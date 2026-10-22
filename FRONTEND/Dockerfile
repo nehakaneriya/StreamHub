@@ -1,5 +1,5 @@
 # ============================================================
-# VideoStreamApp Frontend — Multi-stage Docker build
+# StreamHub Frontend — Multi-stage Docker build
 # ============================================================
 
 # ── Stage 1: Build ────────────────────────────────────────────

@@ -146,8 +146,8 @@ app:
 logging:
   level:
     root: ERROR
-    com.neha.VideoStreamApp: WARN
+    com.neha.StreamHub: WARN
     org.springframework.security: ERROR
     org.springframework.web: ERROR
   file:
-    name: ${LOG_FILE_PATH:logs/videostream.log}   # File mein save hoga
+    name: ${LOG_FILE_PATH:logs/streamhub.log}   # File mein save hoga

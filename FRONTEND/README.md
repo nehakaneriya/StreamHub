@@ -1,6 +1,6 @@
-# VideoStreamApp — Frontend
+# StreamHub — Frontend
 
-React 19 + TypeScript + Vite 7 frontend for the VideoStreamApp video streaming platform.
+React 19 + TypeScript + Vite 7 frontend for the StreamHub video streaming platform.
 
 Full setup instructions live in the [root README](../README.md).
 

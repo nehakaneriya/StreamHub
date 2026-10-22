@@ -1,4 +1,4 @@
-# 🚀 VideoStreamApp — Deployment Guide
+# 🚀 StreamHub — Deployment Guide
 
 Production me deploy karne ka complete guide. Setup details ke liye [README.md](README.md) dekhein.
 
@@ -74,7 +74,7 @@ cp .env.example .env
 
 ```bash
 # ══════════════ DATABASE ══════════════
-DB_NAME=videostreamdb
+DB_NAME=streamhubdb
 DB_PASSWORD=<yaha-mysql-password>
 
 # ══════════════ REDIS ══════════════
@@ -82,7 +82,7 @@ REDIS_PASSWORD=<yaha-redis-password>
 
 # ══════════════ JWT (64+ chars, REQUIRED) ══════════════
 JWT_SECRET=<openssl-rand-base64-48-output>
-JWT_ISSUER=videostream.com
+JWT_ISSUER=streamhub.com
 JWT_ACCESS_TTL_SECONDS=300
 JWT_REFRESH_TTL_SECONDS=604800
 JWT_REFRESH_COOKIE_NAME=refreshToken
@@ -134,7 +134,7 @@ OTP_RESEND_COOLDOWN_SECONDS=60
 OTP_LOG_ENABLED=false       # prod me OTP log KABHI nahi hoga
 
 # ══════════════ MISC ══════════════
-LOG_FILE_PATH=logs/videostream.log
+LOG_FILE_PATH=logs/streamhub.log
 # Pehli deployment ke liye:
 DDL_AUTO=update
 # (baad me wapas `validate` kar dena)
@@ -152,8 +152,8 @@ sudo apt update && sudo apt install -y docker.io docker-compose-plugin git
 sudo systemctl enable --now docker
 
 # Project copy karo
-git clone <your-repo> /opt/videostream
-cd /opt/videostream
+git clone <your-repo> /opt/streamhub
+cd /opt/streamhub
 ```
 
 ### 4.2 Pehli deployment
@@ -173,7 +173,7 @@ docker compose logs -f backend
 ```
 [REDIS-HEALTH] Redis is reachable (PONG) — caching, OTP, rate limiting and JWT blacklist all active.
 Default admin user created for you@yourdomain.com
-Started VideoStreamAppApplication
+Started StreamHubApplication
 ```
 
 ### 4.3 Schema lock (pehli deployment ke baad)
@@ -194,7 +194,7 @@ docker compose up -d backend
 ```bash
 # 1. Health check
 curl https://app.yourdomain.com/api/v1/health
-# {"status":"UP","service":"VideoStreamApp",...}
+# {"status":"UP","service":"StreamHub",...}
 
 # 2. Container states — sab "healthy"/"running" hone chahiye
 docker compose ps
@@ -246,7 +246,7 @@ docker compose exec redis redis-cli -a "$REDIS_PASSWORD" --scan --pattern 'ratel
 ## 7. Update / redeploy
 
 ```bash
-cd /opt/videostream
+cd /opt/streamhub
 git pull
 docker compose up -d --build
 ```
@@ -259,17 +259,17 @@ docker compose up -d --build
 
 ```bash
 # MySQL dump
-docker compose exec mysql mysqldump -uroot -p"$DB_PASSWORD" videostreamdb \
+docker compose exec mysql mysqldump -uroot -p"$DB_PASSWORD" streamhubdb \
   > backup_$(date +%F).sql
 
 # Uploaded videos (volume se)
-docker run --rm -v videostreamapp_backend-videos:/data -v $(pwd):/backup alpine \
+docker run --rm -v streamhub_backend-videos:/data -v $(pwd):/backup alpine \
   tar czf /backup/videos_$(date +%F).tar.gz -C /data .
 ```
 
 **Cron job bana do** (raat ko 3 baje):
 ```bash
-0 3 * * * cd /opt/videostream && ./backup.sh >> /var/log/videostream-backup.log 2>&1
+0 3 * * * cd /opt/streamhub && ./backup.sh >> /var/log/streamhub-backup.log 2>&1
 ```
 
 ---

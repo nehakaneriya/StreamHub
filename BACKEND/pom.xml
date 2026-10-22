@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.neha</groupId>
-	<artifactId>VideoStreamApp</artifactId>
+	<artifactId>StreamHub</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>VideoStreamApp</name>
-	<description>Demo For VideoStreamApp</description>
+	<name>StreamHub</name>
+	<description>Demo For StreamHub</description>
 	<url/>
 	<licenses>
 		<license/>

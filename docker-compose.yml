@@ -1,5 +1,13 @@
+# ============================================================
+# StreamHub — Docker Compose
+# ============================================================
+# NOTE: `name` set karne se project (aur volume) naam FOLDER ke naam se
+# independent ho jata hai. Folder rename karo ya kahin aur clone karo —
+# volumes same naam se milenge, data safe rahega.
+name: streamhub
+
 networks:
-  videostream-net:
+  streamhub-net:
     driver: bridge
 
 volumes:
@@ -11,11 +19,11 @@ services:
   # ── 1. MySQL Database ───────────────────────────────────────
   mysql:
     image: mysql:8.0
-    container_name: videostream-mysql
+    container_name: streamhub-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
-      MYSQL_DATABASE: ${DB_NAME:-videostreamdb}
+      MYSQL_DATABASE: ${DB_NAME:-streamhubdb}
     ports:
       - "3307:3306"
     volumes:
@@ -26,33 +34,33 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - videostream-net
+      - streamhub-net
 
   # ── 2. Redis Cache ──────────────────────────────────────────
   redis:
     image: redis:7.0
-    container_name: videostream-redis
+    container_name: streamhub-redis
     restart: unless-stopped
     # Password set karo — passwordless Redis koi bhi access kar sakta hai
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-videostream_redis_pass}"]
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-streamhub_redis_pass}"]
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-videostream_redis_pass}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-streamhub_redis_pass}
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping", "-a", "${REDIS_PASSWORD:-videostream_redis_pass}"]
+      test: ["CMD", "redis-cli", "ping", "-a", "${REDIS_PASSWORD:-streamhub_redis_pass}"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - videostream-net
+      - streamhub-net
 
   # ── 3. Spring Boot Backend (Java 21 + FFmpeg) ───────────────
   backend:
     build:
       context: ./BACKEND
       dockerfile: Dockerfile
-    container_name: videostream-backend
+    container_name: streamhub-backend
     restart: unless-stopped
     depends_on:
       mysql:
@@ -61,20 +69,20 @@ services:
         condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
-      DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-videostreamdb}
+      DB_URL: jdbc:mysql://mysql:3306/${DB_NAME:-streamhubdb}
       DB_USERNAME: root
       DB_PASSWORD: ${DB_PASSWORD:-root}
 
       # Redis
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
-      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-videostream_redis_pass}
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-streamhub_redis_pass}
 
       # JWT
       # NOTE: Default secret prod me use KABHI mat karna — apna 64+ char
       # random secret .env me set karo. (JWT_SECRET env se hi aayega)
       JWT_SECRET: ${JWT_SECRET:-changeme_generate_a_64_char_random_secret_key_for_production_use_123456}
-      JWT_ISSUER: ${JWT_ISSUER:-videostream.com}
+      JWT_ISSUER: ${JWT_ISSUER:-streamhub.com}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-300}
       JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-86400}
       JWT_REFRESH_COOKIE_NAME: ${JWT_REFRESH_COOKIE_NAME:-refreshToken}
@@ -110,7 +118,7 @@ services:
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM: ${MAIL_FROM:-no-reply@videostream.com}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@streamhub.com}
 
       # Storage (Mounted to Docker volumes)
       VIDEO_STORAGE_PATH: /app/videos/
@@ -128,7 +136,7 @@ services:
       retries: 5
       start_period: 60s
     networks:
-      - videostream-net
+      - streamhub-net
 
   # ── 4. React Frontend (Nginx Reverse Proxy) ─────────────────
   frontend:
@@ -138,7 +146,7 @@ services:
       args:
         VITE_API_BASE_URL: /api/v1
         VITE_BACKEND_URL: ""
-    container_name: videostream-frontend
+    container_name: streamhub-frontend
     restart: unless-stopped
     depends_on:
       backend:
@@ -147,4 +155,4 @@ services:
       - "80:80"
       - "1304:80"
     networks:
-      - videostream-net
+      - streamhub-net

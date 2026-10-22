@@ -7,6 +7,11 @@
 # Docker
 docker-compose.override.yml
 
+# IDE
+.vscode/
+.idea/
+*.iml
+
 # Generated video files + HLS output (media bada hota hai, repo me nahi chahiye)
 videos/
 videos_hls/

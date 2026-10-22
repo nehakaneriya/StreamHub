@@ -1,4 +1,4 @@
-# VideoStreamApp
+# StreamHub
 
 A full-stack video streaming platform — Spring Boot 3.5 (Java 21) backend, React 19 + TypeScript + Vite frontend, MySQL + Redis, FFmpeg-based adaptive HLS transcoding.
 
@@ -87,8 +87,8 @@ docker compose up --build
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DB_NAME` / `DB_PASSWORD` | `videostreamdb` / `root` | MySQL |
-| `REDIS_PASSWORD` | `videostream_redis_pass` | Redis auth (also set in `BACKEND/.env` for local Redis) |
+| `DB_NAME` / `DB_PASSWORD` | `streamhubdb` / `root` | MySQL |
+| `REDIS_PASSWORD` | `streamhub_redis_pass` | Redis auth (also set in `BACKEND/.env` for local Redis) |
 | `JWT_SECRET` | *placeholder* | **64+ random chars** — generate with `openssl rand -base64 48` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | `admin@gmail.com` / — | Password policy: 8+ chars, 1 letter, 1 digit, 1 symbol |
 | `ADMIN_SEED_ENABLED` | `true` | `false` → default admin create nahi hoga |
@@ -163,7 +163,7 @@ Swagger UI (dev/QA only): http://localhost:2911/swagger-ui.html
 ## Project structure
 
 ```
-BACKEND/src/main/java/com/neha/VideoStreamApp/
+BACKEND/src/main/java/com/neha/StreamHub/
 ├── config/       SecurityConfig, AppConstants, ProjectConfig
 ├── controller/   REST endpoints
 ├── service/      business logic (+ impl/)
